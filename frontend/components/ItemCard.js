@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, Image, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function ItemCard({ item, onPress }) {
+export default function ItemCard({ item, onPress, onDelete }) {
   const router = useRouter();
 
   const handleClaim = (e) => {
@@ -19,12 +19,57 @@ export default function ItemCard({ item, onPress }) {
     }
   };
 
+  const handleDelete = (e) => {
+    // Prevent triggering the card press
+    e.stopPropagation();
+    
+    // Call the onDelete function passed from parent
+    if (onDelete) {
+      onDelete(item.id);
+    }
+  };
+
   // Format date to a readable string
   const formatDate = (date) => {
     if (!date) return '';
     
     const options = { month: 'short', day: 'numeric', year: 'numeric' };
     return date instanceof Date ? date.toLocaleDateString('en-US', options) : '';
+  };
+
+  // Function to render the image based on type (require import or URI)
+  const renderItemImage = () => {
+    if (!item.image) {
+      // If no image, use placeholder
+      return (
+        <Image 
+          source={require('../assets/placeholder.png')} 
+          style={styles.itemImage}
+          resizeMode="cover"
+        />
+      );
+    }
+    
+    // Check if image is a string (URI) or an object (require import)
+    if (typeof item.image === 'string') {
+      // It's a URI string (from user-added items)
+      return (
+        <Image 
+          source={{ uri: item.image }} 
+          style={styles.itemImage} 
+          resizeMode="cover" 
+        />
+      );
+    } else {
+      // It's a require import (from mock data)
+      return (
+        <Image 
+          source={item.image} 
+          style={styles.itemImage} 
+          resizeMode="cover" 
+        />
+      );
+    }
   };
 
   return (
@@ -35,15 +80,7 @@ export default function ItemCard({ item, onPress }) {
     >
       {/* Item Image Container */}
       <View style={styles.imageContainer}>
-        {item.image ? (
-          <Image source={item.image} style={styles.itemImage} resizeMode="cover" />
-        ) : (
-          <Image 
-            source={require('../assets/placeholder.png')} 
-            style={styles.itemImage}
-            resizeMode="cover"
-          />
-        )}
+        {renderItemImage()}
         {item.date && (
           <View style={styles.dateTag}>
             <Text style={styles.dateText}>{formatDate(item.date)}</Text>
@@ -95,14 +132,28 @@ export default function ItemCard({ item, onPress }) {
           </View>
         </View>
 
-        {/* Claim Button */}
-        <TouchableOpacity 
-          style={styles.claimButton} 
-          onPress={handleClaim}
-        >
-          <Ionicons name="chatbubble-outline" size={16} color="#000" style={styles.buttonIcon} />
-          <Text style={styles.claimButtonText}>Claim</Text>
-        </TouchableOpacity>
+        {/* Action Buttons */}
+        <View style={styles.actionButtons}>
+          {/* Claim Button */}
+          <TouchableOpacity 
+            style={styles.claimButton} 
+            onPress={handleClaim}
+          >
+            <Ionicons name="chatbubble-outline" size={16} color="#000" style={styles.buttonIcon} />
+            <Text style={styles.claimButtonText}>Claim</Text>
+          </TouchableOpacity>
+
+          {/* Delete Button - Mobile optimized view */}
+          {item.postedByUser && (
+            <TouchableOpacity 
+              style={styles.deleteButtonMobile}
+              onPress={handleDelete}
+            >
+              <Ionicons name="trash-outline" size={16} color="#fff" style={styles.buttonIcon} />
+              <Text style={styles.deleteButtonText}>Delete</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -231,7 +282,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'flex-start',
     // Add a slight shadow to the button
     shadowColor: '#000',
     shadowOffset: {
@@ -247,6 +297,46 @@ const styles = StyleSheet.create({
   },
   claimButtonText: {
     color: '#000',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(231, 76, 60, 0.9)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  deleteButtonMobile: {
+    backgroundColor: '#E74C3C',
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  deleteButtonText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },

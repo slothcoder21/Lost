@@ -17,6 +17,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Preset item titles
 const PRESET_ITEMS = [
@@ -114,9 +115,37 @@ export default function ListItemPage() {
 
     setLoading(true);
 
-    // Here you would typically upload the data to your server
-    // For now we'll just simulate a delay
-    setTimeout(() => {
+    try {
+      // Create a new item object
+      const newItem = {
+        id: Date.now(), // Use timestamp as a simple unique ID
+        title,
+        image, // This will be the URI of the image
+        description,
+        foundBy: {
+          name: userName || 'You', // Use the entered userName or default to 'You'
+          image: require('../assets/profile-photo.png'), // Use default profile image
+        },
+        location,
+        date: new Date(),
+        status,
+        postedByUser: true,
+      };
+
+      // Get existing items from storage
+      const existingItemsJSON = await AsyncStorage.getItem('items');
+      let items = [];
+      
+      if (existingItemsJSON) {
+        items = JSON.parse(existingItemsJSON);
+      }
+      
+      // Add the new item to the items array
+      items.unshift(newItem); // Add to the beginning of the array
+      
+      // Save back to storage
+      await AsyncStorage.setItem('items', JSON.stringify(items));
+      
       setLoading(false);
       Alert.alert(
         'Success',
@@ -128,7 +157,11 @@ export default function ListItemPage() {
           }
         ]
       );
-    }, 1500);
+    } catch (error) {
+      setLoading(false);
+      console.error('Error saving item:', error);
+      Alert.alert('Error', 'Failed to save your item. Please try again.');
+    }
   };
 
   const goBack = () => {

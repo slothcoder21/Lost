@@ -14,22 +14,21 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { signOut, getCurrentUser, getUserProfile, getKarmaScore } from '../services/firebaseAuthService';
-import { useAuth } from '../contexts/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { currentUser } = useAuth();
   
   // State for user data
   const [userData, setUserData] = useState({
-    name: 'User Name',
-    email: 'user@example.com',
-    phone: '',
-    pronouns: '',
+    name: 'Adrian Lam',
+    email: 'test@example.com',
+    pronouns: 'he/him',
     notifications: true,
     location: 'Davis, CA',
-    karmaScore: 0
+    karmaScore: 0,
+    profileImage: null
   });
 
   // State for form fields
@@ -39,77 +38,31 @@ export default function ProfilePage() {
   const [pronouns, setPronouns] = useState(userData.pronouns);
   const [notificationsEnabled, setNotificationsEnabled] = useState(userData.notifications);
   const [karmaScore, setKarmaScore] = useState(userData.karmaScore);
+  const [profileImage, setProfileImage] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load user data when component mounts
+  // Load user data from AsyncStorage when component mounts
   useEffect(() => {
     const loadUserData = async () => {
       try {
         setLoading(true);
-        const user = await getCurrentUser();
+        // Try to get profile data from AsyncStorage
+        const storedProfile = await AsyncStorage.getItem('userProfile');
         
-        if (user) {
-          // Try to get Firestore profile data
-          try {
-            const profile = await getUserProfile(user.uid);
-            
-            if (profile) {
-              // Get karma score
-              const karma = await getKarmaScore(user.uid);
-              
-              setUserData({
-                name: `${profile.firstName || ''} ${profile.lastName || ''}`.trim(),
-                email: user.email || '',
-                phone: profile.phoneNumber || '',
-                pronouns: profile.pronouns || '',
-                notifications: true,
-                location: 'Davis, CA',
-                karmaScore: karma
-              });
-              
-              setName(`${profile.firstName || ''} ${profile.lastName || ''}`.trim());
-              setEmail(user.email || '');
-              setPhone(profile.phoneNumber || '');
-              setPronouns(profile.pronouns || '');
-              setKarmaScore(karma);
-            } else {
-              // Use basic Firebase Auth data if no profile
-              setUserData({
-                name: user.displayName || 'User',
-                email: user.email || '',
-                phone: user.phoneNumber || '',
-                pronouns: '',
-                notifications: true,
-                location: 'Davis, CA',
-                karmaScore: 0
-              });
-              
-              setName(user.displayName || 'User');
-              setEmail(user.email || '');
-              setPhone(user.phoneNumber || '');
-              setKarmaScore(0);
-            }
-          } catch (error) {
-            console.error('Error loading profile data:', error);
-            // Fall back to Firebase Auth data
-            setUserData({
-              name: user.displayName || 'User',
-              email: user.email || '',
-              phone: user.phoneNumber || '',
-              pronouns: '',
-              notifications: true,
-              location: 'Davis, CA',
-              karmaScore: 0
-            });
-            
-            setName(user.displayName || 'User');
-            setEmail(user.email || '');
-            setPhone(user.phoneNumber || '');
-            setKarmaScore(0);
-          }
+        if (storedProfile) {
+          const profile = JSON.parse(storedProfile);
+          setUserData(profile);
+          
+          setName(profile.name);
+          setEmail(profile.email);
+          setPhone(profile.phone);
+          setPronouns(profile.pronouns);
+          setNotificationsEnabled(profile.notifications);
+          setKarmaScore(profile.karmaScore);
+          setProfileImage(profile.profileImage);
         }
       } catch (error) {
-        console.error('Error loading user data:', error);
+        console.error('Error loading user data from storage:', error);
       } finally {
         setLoading(false);
       }
@@ -118,19 +71,32 @@ export default function ProfilePage() {
     loadUserData();
   }, []);
 
-  const handleSave = () => {
-    // Update user data
-    setUserData({
-      ...userData,
-      name,
-      email,
-      phone,
-      pronouns,
-      notifications: notificationsEnabled
-    });
-    
-    // Show success message
-    Alert.alert('Success', 'Your profile has been updated!');
+  const handleSave = async () => {
+    try {
+      // Create updated profile data
+      const updatedProfile = {
+        name,
+        email,
+        phone,
+        pronouns,
+        notifications: notificationsEnabled,
+        location: userData.location,
+        karmaScore: karmaScore,
+        profileImage
+      };
+      
+      // Save to AsyncStorage
+      await AsyncStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+      
+      // Update state
+      setUserData(updatedProfile);
+      
+      // Show success message
+      Alert.alert('Success', 'Your profile has been updated!');
+    } catch (error) {
+      console.error('Error saving profile data:', error);
+      Alert.alert('Error', 'Failed to save profile. Please try again.');
+    }
   };
 
   const handleLogout = () => {
@@ -146,11 +112,12 @@ export default function ProfilePage() {
           text: 'Logout',
           onPress: async () => {
             try {
-              await signOut();
+              // Clear local profile data
+              await AsyncStorage.removeItem('userProfile');
               router.replace('/login');
             } catch (error) {
-              console.error('Error signing out:', error);
-              Alert.alert('Error', 'Failed to sign out. Please try again.');
+              console.error('Error logging out:', error);
+              Alert.alert('Error', 'Failed to log out. Please try again.');
             }
           },
           style: 'destructive',
@@ -163,9 +130,32 @@ export default function ProfilePage() {
     router.back();
   };
 
-  const handleChangeProfilePicture = () => {
-    // In a real app, this would open image picker
-    Alert.alert('Feature', 'Image upload would be implemented here');
+  const handleChangeProfilePicture = async () => {
+    try {
+      // Request permission to access the photo library
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your photo library to change your profile picture.');
+        return;
+      }
+      
+      // Launch the image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        // Set the selected image URI
+        setProfileImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error changing profile picture:', error);
+      Alert.alert('Error', 'Failed to change profile picture. Please try again.');
+    }
   };
 
   return (
@@ -187,7 +177,7 @@ export default function ProfilePage() {
           {/* Profile Picture Section */}
           <View style={styles.profilePictureSection}>
             <Image 
-              source={require('../assets/profile-placeholder.png')}
+              source={profileImage ? { uri: profileImage } : require('../assets/profile-placeholder.png')}
               style={styles.profilePicture}
             />
             <TouchableOpacity onPress={handleChangeProfilePicture} style={styles.changePhotoButton}>
@@ -226,18 +216,8 @@ export default function ProfilePage() {
               placeholder="Your Email"
               keyboardType="email-address"
               autoCapitalize="none"
-              editable={false}
             />
-            
-            <Text style={styles.inputLabel}>Phone Number</Text>
-            <TextInput
-              style={styles.input}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="Your Phone Number"
-              keyboardType="phone-pad"
-            />
-            
+
             <Text style={styles.inputLabel}>Pronouns</Text>
             <TextInput
               style={styles.input}

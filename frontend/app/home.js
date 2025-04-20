@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, SafeAreaView, Image, ScrollView, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, SafeAreaView, Image, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import ItemCard from '../components/ItemCard';
 import FilterModal from '../components/FilterModal';
 import ItemDetailModal from '../components/ItemDetailModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function HomePage() {
   const router = useRouter();
@@ -14,6 +15,7 @@ export default function HomePage() {
   const [filteredItems, setFilteredItems] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [items, setItems] = useState([]);
   
   // Prevent back navigation to login/register screens
   useEffect(() => {
@@ -30,7 +32,7 @@ export default function HomePage() {
   }, []);
   
   // Mock data for the items list
-  const items = [
+  const mockItems = [
     {
       id: 1,
       title: 'Water Bottle',
@@ -112,15 +114,46 @@ export default function HomePage() {
     },
   ];
 
-  // Initialize filtered items with all items on component mount
+  // Load items from storage
+  useEffect(() => {
+    const loadItems = async () => {
+      try {
+        const storedItemsJSON = await AsyncStorage.getItem('items');
+        let userItems = [];
+        
+        if (storedItemsJSON) {
+          const parsedItems = JSON.parse(storedItemsJSON);
+          // Convert string dates back to Date objects
+          userItems = parsedItems.map(item => ({
+            ...item,
+            date: new Date(item.date),
+            // For items from storage, we need to handle the image differently
+            // since it's stored as a URI string instead of a require() reference
+            image: item.image,
+          }));
+        }
+        
+        // Combine mock items with user-added items
+        setItems([...userItems, ...mockItems]);
+      } catch (error) {
+        console.error('Error loading items from storage:', error);
+        // If there's an error, fallback to mock data
+        setItems(mockItems);
+      }
+    };
+    
+    loadItems();
+  }, []);
+
+  // Initialize filtered items with all items when items change
   useEffect(() => {
     setFilteredItems(items);
-  }, []);
+  }, [items]);
 
   useEffect(() => {
     // Apply filter when it changes
     applyFilter();
-  }, [appliedFilter]);
+  }, [appliedFilter, items]);
 
   const applyFilter = () => {
     let filtered = [];
@@ -225,6 +258,45 @@ export default function HomePage() {
     setFilterModalVisible(!filterModalVisible);
   };
 
+  // Function to delete an item posted by the user
+  const handleDeleteItem = async (itemId) => {
+    try {
+      // Confirm deletion
+      Alert.alert(
+        "Delete Item",
+        "Are you sure you want to delete this item?",
+        [
+          {
+            text: "Cancel",
+            style: "cancel"
+          },
+          {
+            text: "Delete",
+            onPress: async () => {
+              // Get current items from storage
+              const storedItemsJSON = await AsyncStorage.getItem('items');
+              if (storedItemsJSON) {
+                let storedItems = JSON.parse(storedItemsJSON);
+                // Filter out the item to delete
+                const updatedItems = storedItems.filter(item => item.id !== itemId);
+                
+                // Save the updated items back to storage
+                await AsyncStorage.setItem('items', JSON.stringify(updatedItems));
+                
+                // Update state (this will refresh the UI)
+                setItems(prevItems => prevItems.filter(item => item.id !== itemId));
+              }
+            },
+            style: "destructive"
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      Alert.alert('Error', 'Failed to delete the item. Please try again.');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
@@ -312,6 +384,7 @@ export default function HomePage() {
                 key={item.id} 
                 item={item} 
                 onPress={handleItemPress}
+                onDelete={handleDeleteItem}
               />
             ))
           ) : (

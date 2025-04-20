@@ -111,25 +111,6 @@ export default function UserProfilePage() {
                 </Text>
               </View>
 
-              {/* Contact Information */}
-              <View style={styles.contactSection}>
-                <Text style={styles.sectionTitle}>Contact Information</Text>
-                
-                {userData.email && (
-                  <View style={styles.contactRow}>
-                    <Ionicons name="mail-outline" size={20} color="#666" />
-                    <Text style={styles.contactText}>{userData.email}</Text>
-                  </View>
-                )}
-                
-                {userData.phoneNumber && (
-                  <View style={styles.contactRow}>
-                    <Ionicons name="call-outline" size={20} color="#666" />
-                    <Text style={styles.contactText}>{userData.phoneNumber}</Text>
-                  </View>
-                )}
-              </View>
-
               {/* Contact Button - Only show if viewing someone else's profile */}
               <TouchableOpacity 
                 style={styles.contactButton}

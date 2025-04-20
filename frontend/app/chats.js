@@ -15,87 +15,99 @@ import { useRouter } from 'expo-router';
 export default function ChatsPage() {
   const router = useRouter();
   
-  // Mock data for chat conversations
+  // Updated conversations showing different stages of interactions
   const conversations = [
     {
       id: 6,
       name: 'Emily Johnson',
-      photo: require('../assets/profile-photos/emily.png'), // Reusing photo as placeholder
-      lastMessage: "Great! Before I return it, I need to verify you're the rightful owner. Can you please send me a photo of the phone from before you lost it or provide some unique details about it that only the owner would know?",
+      photo: require('../assets/profile-photos/emily.png'),
+      lastMessage: "I think I found your iPhone! Could you verify it's yours by sharing some unique details or a photo from before you lost it?",
       time: '9:22 AM',
       unread: 2,
       item: {
-        name: 'IPhone',
+        name: 'iPhone',
         location: 'Davis, CA'
       },
-      isFounder: false, // This conversation is about an item you posted
+      isFounder: true, // This person found your lost item
       isUserPost: true, // User posted this item
-      needsVerification: true // The claimant needs to be verified
+      status: 'verification_requested', // Waiting for you to provide verification
+      verificationProgress: 0 // Just started verification process
     },
     {
       id: 5,
       name: 'Davis Police Department',
       photo: require('../assets/profile-photos/davisPolice.png'),
-      lastMessage: "To verify ownership, please tell us the serial number or Apple ID associated with these AirPods.",
+      lastMessage: "We've received your photo verification. Reviewing it now - we'll get back to you shortly.",
       time: '12:00 PM',
       unread: 1,
       item: {
         name: 'Airpods',
         location: 'Davis, CA'
       },
-      isFounder: true // This person found your item
+      isFounder: true, // They found your item
+      status: 'verification_in_progress', // Verification submitted and under review
+      verificationProgress: 50 // Halfway through verification process
     },
     {
       id: 2,
       name: 'Jane Doe',
       photo: require('../assets/profile-photos/janeDoe.png'),
-      lastMessage: "Great! That matches exactly. When would be a good time to meet so I can return it?",
+      lastMessage: "Your verification has been approved! I'd be happy to return your UC Davis ID. Would the MU be a good place to meet tomorrow at 2pm?",
       time: 'Yesterday',
       unread: 2,
       item: {
         name: 'UC Davis ID',
         location: 'Davis, CA'
       },
-      isFounder: true // This person found your item
+      isFounder: true, // They found your item
+      status: 'verification_approved', // Verification complete, arranging meetup
+      verificationProgress: 100 // Verification complete
     },
     {
       id: 1,
       name: 'John Doe',
       photo: require('../assets/profile-photos/johnDoe.png'),
-      lastMessage: "I'll be there at 3:30 PM. I'll be wearing a red jacket and I'll have your water bottle with me.",
+      lastMessage: "Perfect! I'll be at the Silo at 3:30 PM today. I'll be wearing a red jacket and I'll have your water bottle with me. Look for me near the outdoor tables.",
       time: '10:42 AM',
       unread: 0,
       item: {
         name: 'Water Bottle',
         location: 'Davis, CA'
       },
-      isFounder: false // You're trying to claim this item
+      isFounder: true, // They found your item
+      status: 'meetup_arranged', // Meeting time and place set
+      verificationProgress: 100 // Verification complete
     },
     {
       id: 3,
       name: 'Andrew Lam',
       photo: require('../assets/profile-photos/andrew.png'),
-      lastMessage: "That's definitely your backpack! When can I meet you to return it?",
+      lastMessage: "Thanks for meeting me today! I'm glad we were able to return your backpack. Would you mind giving karma points for returning it?",
       time: '2 days ago',
       unread: 0,
       item: {
         name: 'Backpack',
         location: 'Davis, CA'
       },
-      isFounder: false // You're trying to claim this item
+      isFounder: true, // They found your item
+      status: 'item_returned', // Item has been returned
+      verificationProgress: 100 // Verification complete
     },
     {
       id: 4,
       name: 'Justin So',
       photo: require('../assets/profile-photos/justin.png'),
-      lastMessage: "That's exactly what I found! I can drop it off at the Chemistry department office tomorrow if that works for you?",
+      lastMessage: "I found your pencil, but I need to verify you're the owner. Could you tell me any unique details about it, like specific marks or when you last had it?",
       time: '3 days ago',
-      unread: 0,
+      unread: 3,
       item: {
         name: 'Pencil',
         location: 'Davis, CA'
       },
-      isFounder: true // This person found your item
+      isFounder: false, // You found their item
+      isClaimant: true, // They're claiming the item you found
+      status: 'awaiting_verification', // Waiting for their response
+      verificationProgress: 10 // Just started verification process
     }
   ];
 
@@ -104,15 +116,69 @@ export default function ChatsPage() {
   };
 
   const handleOpenChat = (conversation) => {
-    if (conversation.needsVerification && conversation.isUserPost) {
-      router.push(`/chat?userId=user-${conversation.id}&userPost=true`);
-    } else {
-      router.push(`/chat?userId=user-${conversation.id}`);
-    }
+    // Pass all relevant status information to the chat page
+    router.push({
+      pathname: '/chat',
+      params: {
+        userId: `user-${conversation.id}`,
+        userPost: conversation.isUserPost ? 'true' : 'false',
+        verificationStatus: conversation.status,
+        verificationProgress: conversation.verificationProgress.toString()
+      }
+    });
   };
 
   // Render each conversation
   const renderConversation = ({ item }) => {
+    // Helper function to generate appropriate status badge
+    const getStatusBadge = (convo) => {
+      let badgeText = '';
+      let badgeColor = '';
+      let iconName = '';
+      
+      switch(convo.status) {
+        case 'verification_requested':
+          badgeText = 'Verification Needed';
+          badgeColor = '#FFA000'; // Amber
+          iconName = 'shield-outline';
+          break;
+        case 'verification_in_progress':
+          badgeText = 'Verifying...';
+          badgeColor = '#2196F3'; // Blue
+          iconName = 'time-outline';
+          break;
+        case 'verification_approved':
+          badgeText = 'Verified';
+          badgeColor = '#4CAF50'; // Green
+          iconName = 'shield-checkmark';
+          break;
+        case 'meetup_arranged':
+          badgeText = 'Meetup Set';
+          badgeColor = '#9C27B0'; // Purple
+          iconName = 'calendar';
+          break;
+        case 'item_returned':
+          badgeText = 'Returned';
+          badgeColor = '#8AD3A3'; // App green
+          iconName = 'checkmark-circle';
+          break;
+        case 'awaiting_verification':
+          badgeText = 'Awaiting Proof';
+          badgeColor = '#FF5722'; // Deep Orange
+          iconName = 'hourglass-outline';
+          break;
+        default:
+          return null;
+      }
+      
+      return (
+        <View style={[styles.statusBadge, {backgroundColor: badgeColor}]}>
+          <Ionicons name={iconName} size={12} color="#fff" />
+          <Text style={styles.statusBadgeText}>{badgeText}</Text>
+        </View>
+      );
+    };
+    
     return (
       <TouchableOpacity 
         style={styles.conversationItem}
@@ -138,13 +204,8 @@ export default function ChatsPage() {
               {item.isFounder ? "Found: " : "Lost: "}{item.item.name}
             </Text>
             
-            {/* Verification Badge for items that need verification */}
-            {item.needsVerification && (
-              <View style={styles.verificationBadge}>
-                <Ionicons name="shield-checkmark-outline" size={12} color="#555" />
-                <Text style={styles.verificationText}>Needs Verification</Text>
-              </View>
-            )}
+            {/* Status Badge */}
+            {getStatusBadge(item)}
           </View>
           
           <View style={styles.conversationFooter}>
@@ -266,6 +327,7 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: 12,
     color: '#666',
+    marginRight: 6,
   },
   conversationFooter: {
     flexDirection: 'row',
@@ -291,18 +353,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
-  verificationBadge: {
+  statusBadge: {
     flexDirection: 'row',
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
     alignItems: 'center',
-    marginLeft: 6,
   },
-  verificationText: {
+  statusBadgeText: {
     fontSize: 10,
-    color: '#555',
-    marginLeft: 2,
+    color: '#fff',
+    fontWeight: '500',
+    marginLeft: 3,
   },
 }); 

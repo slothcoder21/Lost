@@ -51,19 +51,42 @@ export default function ItemDetailModal({ visible, item, onClose, onClaim }) {
   const handleClaimButtonPress = () => {
     // If the item is already claimed, show contact owner
     if (item.status === 'Lost') {
+      // This is a lost item, so the user wants to contact the owner
+      // Just redirect to chat without verification
       handleClaim();
     } else {
-      // For found items, show verification modal
+      // This is a found item, so the user needs to verify ownership before claiming
       setVerificationModalVisible(true);
     }
   };
 
-  const handleClaim = () => {
+  const handleClaim = (verificationData = null) => {
+    // Close the modal
     onClose();
+    
+    // Determine the appropriate navigation parameters
+    const params = {
+      userId: `user-${item.id}`,
+      itemType: item.status.toLowerCase(), // 'lost' or 'found'
+    };
+    
+    // If verification data was provided, include it in the params
+    if (verificationData) {
+      params.verification = 'pending';
+      // We would typically store this in a context or state manager
+      // For prototype purposes, we'll rely on the chat component to handle this
+    }
+    
+    // Navigate to chat with the appropriate params
     if (onClaim) {
-      onClaim(item);
+      onClaim(item, verificationData);
     } else {
-      router.push(`/chat?userId=user-${item.id}`);
+      // Convert params object to URL query string
+      const queryParams = Object.entries(params)
+        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+        .join('&');
+      
+      router.push(`/chat?${queryParams}`);
     }
   };
 
@@ -71,18 +94,28 @@ export default function ItemDetailModal({ visible, item, onClose, onClaim }) {
     // Close the verification modal
     setVerificationModalVisible(false);
     
-    // Here you would typically send the verification data to your backend
-    // For now, we'll just show a success message and proceed to chat
-    Alert.alert(
-      'Verification Submitted',
-      'Your ownership claim has been submitted. The finder will review your verification.',
-      [
-        { 
+    // Determine if verification should be sent as a message or submitted separately
+    if (verificationData.sendAsMessage) {
+      // Navigate to chat with verification data
+      handleClaim(verificationData);
+      
+      // Show a success message
+      Alert.alert(
+        'Verification Ready',
+        'Your ownership claim will be sent in the chat for the finder to review.',
+        [{ text: 'OK' }]
+      );
+    } else {
+      // Submit verification separately (would typically go to a backend)
+      Alert.alert(
+        'Verification Submitted',
+        'Your ownership claim has been submitted. The finder will review your verification.',
+        [{ 
           text: 'OK', 
-          onPress: handleClaim
-        }
-      ]
-    );
+          onPress: () => handleClaim() 
+        }]
+      );
+    }
   };
 
   const handleViewProfile = () => {
@@ -229,6 +262,7 @@ export default function ItemDetailModal({ visible, item, onClose, onClaim }) {
         onClose={() => setVerificationModalVisible(false)}
         onSubmit={handleVerificationSubmit}
         itemName={item ? item.title : ''}
+        itemType="found" // Explicitly set to found since this is for claiming found items
       />
     </>
   );

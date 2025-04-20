@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -19,35 +19,125 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { getTestUserProfile } from '../services/testProfileService';
+import VerificationModal from '../components/VerificationModal';
+import ImagePicker from 'react-native-image-picker';
 
 // Verification Banner Component
-const VerificationBanner = ({ onPress, isPending }) => {
+const VerificationBanner = ({ onPress, status, progress }) => {
+  // Helper functions to determine banner appearance based on status
+  const getBannerStyle = () => {
+    switch(status) {
+      case 'verification_requested':
+        return [styles.verificationBanner, styles.requestedBanner];
+      case 'awaiting_verification':
+        return [styles.verificationBanner, styles.awaitingBanner];
+      case 'verification_in_progress':
+        return [styles.verificationBanner, styles.pendingBanner];
+      case 'verification_approved':
+        return [styles.verificationBanner, styles.approvedBanner];
+      case 'meetup_arranged':
+        return [styles.verificationBanner, styles.meetupBanner];
+      case 'item_returned':
+        return [styles.verificationBanner, styles.returnedBanner];
+      default:
+        return [styles.verificationBanner, styles.pendingBanner];
+    }
+  };
+  
+  const getIcon = () => {
+    switch(status) {
+      case 'verification_requested':
+        return {name: "shield-outline", color: "#FFA000"};
+      case 'awaiting_verification':
+        return {name: "hourglass-outline", color: "#FF5722"};
+      case 'verification_in_progress':
+        return {name: "time-outline", color: "#2196F3"};
+      case 'verification_approved':
+        return {name: "shield-checkmark", color: "#4CAF50"};
+      case 'meetup_arranged':
+        return {name: "calendar", color: "#9C27B0"};
+      case 'item_returned':
+        return {name: "checkmark-circle", color: "#8AD3A3"};
+      default:
+        return {name: "alert-circle", color: "#FFA000"};
+    }
+  };
+  
+  const getTitle = () => {
+    switch(status) {
+      case 'verification_requested':
+        return "Verification Required";
+      case 'awaiting_verification':
+        return "Waiting for Verification";
+      case 'verification_in_progress':
+        return "Verification In Progress";
+      case 'verification_approved':
+        return "Ownership Verified";
+      case 'meetup_arranged':
+        return "Meetup Arranged";
+      case 'item_returned':
+        return "Item Returned";
+      default:
+        return "Verification Pending";
+    }
+  };
+  
+  const getDescription = () => {
+    switch(status) {
+      case 'verification_requested':
+        return "Please provide verification to confirm this is your item";
+      case 'awaiting_verification':
+        return "Waiting for the user to verify their ownership";
+      case 'verification_in_progress':
+        return "Your verification is being reviewed by the finder";
+      case 'verification_approved':
+        return "The finder has confirmed your ownership claim";
+      case 'meetup_arranged':
+        return "You've arranged to meet to exchange the item";
+      case 'item_returned':
+        return "This item has been returned to its owner";
+      default:
+        return "Verification is in progress";
+    }
+  };
+  
+  const icon = getIcon();
+  
   return (
     <TouchableOpacity 
-      style={[
-        styles.verificationBanner,
-        isPending ? styles.pendingBanner : styles.reviewedBanner
-      ]}
+      style={getBannerStyle()}
       onPress={onPress}
     >
       <Ionicons 
-        name={isPending ? "alert-circle" : "checkmark-circle"} 
+        name={icon.name}
         size={24} 
-        color={isPending ? "#FFA000" : "#66B289"} 
+        color={icon.color}
       />
       <View style={styles.bannerTextContainer}>
         <Text style={styles.bannerTitle}>
-          {isPending ? "Ownership Verification Pending" : "Ownership Verified"}
+          {getTitle()}
         </Text>
         <Text style={styles.bannerDescription}>
-          {isPending 
-            ? "This user has submitted verification for this item. Tap to review." 
-            : "You've verified this user's ownership claim."
-          }
+          {getDescription()}
         </Text>
       </View>
-      {isPending && (
-        <Ionicons name="chevron-forward" size={20} color="#FFA000" />
+      {(status === 'verification_requested' || status === 'awaiting_verification') && (
+        <Ionicons name="chevron-forward" size={20} color={icon.color} />
+      )}
+      
+      {/* Progress indicator for in-progress verification */}
+      {status === 'verification_in_progress' && progress < 100 && (
+        <View style={styles.miniProgressContainer}>
+          <View style={styles.miniProgressBg}>
+            <View 
+              style={[
+                styles.miniProgressFill, 
+                {width: `${progress}%`}
+              ]} 
+            />
+          </View>
+          <Text style={styles.miniProgressText}>{progress}%</Text>
+        </View>
       )}
     </TouchableOpacity>
   );
@@ -152,6 +242,240 @@ const VerificationReviewModal = ({ visible, onClose, data, onApprove, onReject, 
   );
 };
 
+// VerificationMessageAttachment - Component to handle verification info inside chat messages
+const VerificationMessageAttachment = ({ data, onAction, userRole }) => {
+  if (!data) return null;
+
+  // Get styles based on verification status
+  const getStatusStyles = () => {
+    if (!data.status) return {};
+    
+    switch(data.status) {
+      case 'pending':
+        return {
+          color: "#FFA000",
+          backgroundColor: "#FFF8E1",
+          borderColor: "#FFECB3",
+          icon: "shield-outline",
+          text: "Verification Requested"
+        };
+      case 'submitted':
+        return {
+          color: "#2196F3",
+          backgroundColor: "#E3F2FD",
+          borderColor: "#BBDEFB",
+          icon: "document-text-outline",
+          text: "Verification Submitted"
+        };
+      case 'reviewing':
+        return {
+          color: "#2196F3",
+          backgroundColor: "#E3F2FD",
+          borderColor: "#BBDEFB",
+          icon: "time-outline",
+          text: "Under Review"
+        };
+      case 'approved':
+        return {
+          color: "#4CAF50",
+          backgroundColor: "#E8F5E9",
+          borderColor: "#C8E6C9",
+          icon: "checkmark-circle",
+          text: "Verified"
+        };
+      case 'rejected':
+        return {
+          color: "#F44336",
+          backgroundColor: "#FFEBEE",
+          borderColor: "#FFCDD2",
+          icon: "close-circle",
+          text: "Rejected"
+        };
+      default:
+        return {
+          color: "#4A6572",
+          backgroundColor: "#F5F5F5",
+          borderColor: "#E0E0E0",
+          icon: "shield-checkmark",
+          text: "Ownership Verification"
+        };
+    }
+  };
+
+  const statusStyles = getStatusStyles();
+
+  // Different UI based on whether this is a photo or details verification
+  return (
+    <View style={[
+      styles.verificationAttachment,
+      { 
+        backgroundColor: statusStyles.backgroundColor,
+        borderColor: statusStyles.borderColor 
+      }
+    ]}>
+      <View style={styles.verificationAttachmentHeader}>
+        <Ionicons name={statusStyles.icon} size={16} color={statusStyles.color} />
+        <Text style={[
+          styles.verificationAttachmentTitle,
+          { color: statusStyles.color }
+        ]}>{statusStyles.text}</Text>
+      </View>
+      
+      {data.method === 'photo' && data.image && (
+        <TouchableOpacity 
+          onPress={() => onAction && onAction('view-image', data)}
+          style={styles.verificationAttachmentImageContainer}
+        >
+          <Image 
+            source={{ uri: data.image }} 
+            style={styles.verificationAttachmentImage} 
+            resizeMode="cover"
+          />
+          <View style={styles.verificationAttachmentImageOverlay}>
+            <Text style={styles.verificationAttachmentImageText}>View Photo</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+      
+      {data.method === 'details' && data.details && (
+        <View style={styles.verificationAttachmentDetails}>
+          <Text style={styles.verificationAttachmentDetailsText}>{data.details}</Text>
+        </View>
+      )}
+      
+      {data.status === 'pending' && userRole === 'owner' && (
+        <TouchableOpacity 
+          style={styles.verificationAttachmentRespondBtn}
+          onPress={() => onAction && onAction('respond', data)}
+        >
+          <Text style={styles.verificationAttachmentRespondText}>Provide Verification</Text>
+        </TouchableOpacity>
+      )}
+      
+      {data.status === 'submitted' && userRole === 'finder' && (
+        <View style={styles.verificationAttachmentActions}>
+          <TouchableOpacity 
+            style={styles.verificationAttachmentRejectBtn}
+            onPress={() => onAction && onAction('reject', data)}
+          >
+            <Text style={styles.verificationAttachmentRejectText}>Reject</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.verificationAttachmentApproveBtn}
+            onPress={() => onAction && onAction('approve', data)}
+          >
+            <Text style={styles.verificationAttachmentApproveText}>Approve</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+};
+
+// Attachment Button for sending photos/verification
+const AttachmentButton = ({ onPress, isActive }) => {
+  return (
+    <TouchableOpacity 
+      style={[
+        styles.attachmentButton, 
+        isActive && styles.attachmentButtonActive
+      ]} 
+      onPress={onPress}
+    >
+      <Ionicons 
+        name="camera" 
+        size={24} 
+        color={isActive ? "#8AD3A3" : "#999"} 
+      />
+    </TouchableOpacity>
+  );
+};
+
+// Photo Preview component that shows in the input area
+const PhotoPreview = ({ uri, onRemove }) => {
+  return (
+    <View style={styles.photoPreviewContainer}>
+      <Image 
+        source={{ uri }} 
+        style={styles.photoPreviewImage} 
+        resizeMode="cover"
+      />
+      <TouchableOpacity 
+        style={styles.photoPreviewRemoveButton}
+        onPress={onRemove}
+      >
+        <Ionicons name="close-circle" size={24} color="#FFF" />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// Full-screen Image Viewer modal
+const ImageViewerModal = ({ visible, uri, onClose }) => {
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.imageViewerContainer}>
+        <TouchableOpacity 
+          style={styles.imageViewerCloseButton}
+          onPress={onClose}
+        >
+          <Ionicons name="close" size={30} color="#FFF" />
+        </TouchableOpacity>
+        
+        <Image 
+          source={{ uri }} 
+          style={styles.imageViewerImage} 
+          resizeMode="contain"
+        />
+      </View>
+    </Modal>
+  );
+};
+
+// Add this component for showing meetup banner
+const MeetupBanner = ({ meetupData }) => {
+  const formattedTime = meetupData?.time || '3:30 PM';
+  const location = meetupData?.location || 'the Silo';
+  const date = meetupData?.date || 'today';
+
+  return (
+    <View style={styles.meetupBanner}>
+      <View style={styles.meetupIconContainer}>
+        <Ionicons name="calendar" size={28} color="#9C27B0" />
+      </View>
+      <View style={styles.meetupContent}>
+        <Text style={styles.meetupTitle}>Meetup Arranged</Text>
+        <Text style={styles.meetupDetails}>
+          {`Meeting at ${location}, ${date} at ${formattedTime}`}
+        </Text>
+      </View>
+    </View>
+  );
+};
+
+// Add this component for karma request banner
+const KarmaBanner = ({ onGiveKarma }) => {
+  return (
+    <TouchableOpacity style={styles.karmaBanner} onPress={onGiveKarma}>
+      <View style={styles.karmaIconContainer}>
+        <Ionicons name="star" size={28} color="#FFC107" />
+      </View>
+      <View style={styles.karmaContent}>
+        <Text style={styles.karmaTitle}>Karma Requested</Text>
+        <Text style={styles.karmaDetails}>
+          This user helped return your lost item. Tap to give karma points!
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color="#FFC107" />
+    </TouchableOpacity>
+  );
+};
+
 export default function ChatPage() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -162,25 +486,40 @@ export default function ChatPage() {
   const [showKarmaModal, setShowKarmaModal] = useState(false);
   const [karmaGiven, setKarmaGiven] = useState(false);
   const [showVerificationReviewModal, setShowVerificationReviewModal] = useState(false);
-  const [verificationStatus, setVerificationStatus] = useState(params.verification ? 'pending' : null);
+  
+  // Updated verification status handling from URL params
+  const [verificationStatus, setVerificationStatus] = useState(params.verificationStatus || 'none');
+  const [verificationProgress, setVerificationProgress] = useState(
+    params.verificationProgress ? parseInt(params.verificationProgress) : 0
+  );
+  
   const [verificationData, setVerificationData] = useState(null);
+  const [showUploadVerificationModal, setShowUploadVerificationModal] = useState(false);
+  
+  // New state for attachment functionality
+  const [isAttachmentActive, setIsAttachmentActive] = useState(false);
+  const [attachedPhoto, setAttachedPhoto] = useState(null);
+  const [attachedPhotoType, setAttachedPhotoType] = useState(null); // 'verification' or 'message'
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [showImageViewer, setShowImageViewer] = useState(false);
+  const [viewingImageUri, setViewingImageUri] = useState(null);
   
   // User profile photo (your own icon)
   const userProfilePhoto = require('../assets/profile-photo.png');
   
-  // Conversation data for each item
+  // Updated conversation data for each item, showing different stages of the verification process
   const conversations = [
     {
       id: 6,
       name: 'Emily Johnson',
-      photo: require('../assets/profile-photos/emily.png'), // Reusing photo as placeholder
+      photo: require('../assets/profile-photos/emily.png'),
       item: {
-        name: 'IPhone',
+        name: 'iPhone',
         location: 'Davis, CA'
       },
-      isUserPost: true, // Flag to indicate this is the user's own post
-      needsVerification: true, // Flag to indicate verification is needed
-      unread: 2, // Add unread count to show notification
+      isUserPost: true,
+      status: 'verification_requested',
+      verificationProgress: 0,
       messages: [
         {
           id: 1,
@@ -202,9 +541,13 @@ export default function ChatPage() {
         },
         {
           id: 4,
-          text: "Great! Before I return it, I need to verify you're the rightful owner. Can you please send me a photo of the phone from before you lost it or provide some unique details about it that only the owner would know?",
+          text: "I think I found your iPhone! Could you verify it's yours by sharing some unique details or a photo from before you lost it?",
           sender: "finder",
-          timestamp: "9:22 AM"
+          timestamp: "9:22 AM",
+          verification: {
+            type: 'request',
+            status: 'pending'
+          }
         }
       ]
     },
@@ -216,8 +559,9 @@ export default function ChatPage() {
         name: 'Airpods',
         location: 'Davis, CA'
       },
-      isFounder: true, // This person found the item
-      unread: 1, // Add unread count to show notification
+      isFounder: true,
+      status: 'verification_in_progress',
+      verificationProgress: 50,
       messages: [
         {
           id: 1,
@@ -229,67 +573,32 @@ export default function ChatPage() {
           id: 2,
           text: "Hello, we have received AirPods that were found at the TLC. They have a distinctive sticker on the case. To verify ownership, could you describe the sticker and any other identifying features?",
           sender: "finder",
-          timestamp: "11:45 AM"
+          timestamp: "11:45 AM",
+          verification: {
+            type: 'request',
+            status: 'pending'
+          }
         },
         {
           id: 3,
           text: "The case has a holographic space sticker on the front. The left AirPod has a small scratch near the stem, and they're paired to my phone under the name 'Adrian's AirPods'.",
           sender: "user",
-          timestamp: "12:00 PM"
+          timestamp: "12:00 PM",
+          verification: {
+            type: 'response',
+            method: 'details',
+            status: 'submitted'
+          }
         },
         {
           id: 4,
-          text: "Thank you for the details. That matches what we have. You can come to the Davis Police Department at 2600 5th Street to claim them. Please bring your ID.",
+          text: "We've received your photo verification. Reviewing it now - we'll get back to you shortly.",
           sender: "finder",
-          timestamp: "12:15 PM"
-        }
-      ]
-    },
-    {
-      id: 1,
-      name: 'John Doe',
-      photo: require('../assets/profile-photos/johnDoe.png'),
-      item: {
-        name: 'Water Bottle',
-        location: 'Davis, CA'
-      },
-      isFounder: true, // This person found the item
-      messages: [
-        {
-          id: 1,
-          text: "Hi John, I saw your post about a found blue water bottle. I believe it's mine - I lost one near the library yesterday.",
-          sender: "user",
-          timestamp: "10:30 AM"
-        },
-        {
-          id: 2,
-          text: "Hi there! Yes, I found a blue metal water bottle near the library. Could you describe any unique features so I can verify it's yours?",
-          sender: "finder",
-          timestamp: "10:32 AM"
-        },
-        {
-          id: 3,
-          text: "Of course! It's a Hydroflask brand, navy blue with a white UC Davis sticker on the side. It also has my initials 'AL' written in black marker on the bottom.",
-          sender: "user",
-          timestamp: "10:35 AM"
-        },
-        {
-          id: 4,
-          text: "That's exactly what I found! When would be a good time to meet up so I can return it to you?",
-          sender: "finder",
-          timestamp: "10:37 AM"
-        },
-        {
-          id: 5,
-          text: "Perfect! I'm available today after 3 PM at the library entrance if that works for you.",
-          sender: "user",
-          timestamp: "10:40 AM"
-        },
-        {
-          id: 6,
-          text: "I'll be there at 3:30 PM. I'll be wearing a red jacket and I'll have your water bottle with me.",
-          sender: "finder",
-          timestamp: "10:42 AM"
+          timestamp: "12:15 PM",
+          verification: {
+            type: 'acknowledgement',
+            status: 'reviewing'
+          }
         }
       ]
     },
@@ -301,7 +610,9 @@ export default function ChatPage() {
         name: 'UC Davis ID',
         location: 'Davis, CA'
       },
-      isFounder: true, // This person found the item
+      isFounder: true,
+      status: 'verification_approved',
+      verificationProgress: 100,
       messages: [
         {
           id: 1,
@@ -313,25 +624,101 @@ export default function ChatPage() {
           id: 2,
           text: "Hello! Yes, I found a UC Davis ID yesterday. To verify it's yours, could you tell me the name and student ID number on the card?",
           sender: "finder",
-          timestamp: "3:20 PM"
+          timestamp: "3:20 PM",
+          verification: {
+            type: 'request',
+            status: 'pending'
+          }
         },
         {
           id: 3,
           text: "Sure! The name is Adrian Lam, student ID #934782, and I'm wearing a blue shirt in the photo. There's also a bike permit sticker on the back.",
           sender: "user",
-          timestamp: "3:22 PM"
+          timestamp: "3:22 PM",
+          verification: {
+            type: 'response',
+            method: 'details',
+            status: 'submitted'
+          }
         },
         {
           id: 4,
-          text: "Great! That matches exactly. When would be a good time to meet so I can return it?",
+          text: "Thank you for your verification details. I've reviewed them and confirmed this is your ID!",
           sender: "finder",
-          timestamp: "3:30 PM"
+          timestamp: "3:30 PM",
+          verification: {
+            type: 'approval',
+            status: 'approved'
+          }
         },
         {
           id: 5,
-          text: "I'm free tomorrow around 1 PM at the Memorial Union. Would that work for you?",
-          sender: "user",
+          text: "Your verification has been approved! I'd be happy to return your UC Davis ID. Would the MU be a good place to meet tomorrow at 2pm?",
+          sender: "finder",
           timestamp: "3:32 PM"
+        }
+      ]
+    },
+    {
+      id: 1,
+      name: 'John Doe',
+      photo: require('../assets/profile-photos/johnDoe.png'),
+      item: {
+        name: 'Water Bottle',
+        location: 'Davis, CA'
+      },
+      isFounder: true,
+      status: 'meetup_arranged',
+      verificationProgress: 100,
+      messages: [
+        {
+          id: 1,
+          text: "Hi John, I saw your post about a found blue water bottle. I believe it's mine - I lost one near the library yesterday.",
+          sender: "user",
+          timestamp: "10:30 AM"
+        },
+        {
+          id: 2,
+          text: "Hi there! Yes, I found a blue metal water bottle near the library. Could you describe any unique features so I can verify it's yours?",
+          sender: "finder",
+          timestamp: "10:32 AM",
+          verification: {
+            type: 'request',
+            status: 'pending'
+          }
+        },
+        {
+          id: 3,
+          text: "Of course! It's a Hydroflask brand, navy blue with a white UC Davis sticker on the side. It also has my initials 'AL' written in black marker on the bottom.",
+          sender: "user",
+          timestamp: "10:35 AM",
+          verification: {
+            type: 'response',
+            method: 'details',
+            status: 'submitted'
+          }
+        },
+        {
+          id: 4,
+          text: "That's exactly what I found! The verification is approved. When would be a good time to meet up so I can return it to you?",
+          sender: "finder",
+          timestamp: "10:37 AM",
+          verification: {
+            type: 'approval',
+            status: 'approved'
+          }
+        },
+        {
+          id: 5,
+          text: "Perfect! I'm available today after 3 PM at the Silo if that works for you.",
+          sender: "user",
+          timestamp: "10:40 AM"
+        },
+        {
+          id: 6,
+          text: "Perfect! I'll be at the Silo at 3:30 PM today. I'll be wearing a red jacket and I'll have your water bottle with me. Look for me near the outdoor tables.",
+          sender: "finder",
+          timestamp: "10:42 AM"
         }
       ]
     },
@@ -343,31 +730,68 @@ export default function ChatPage() {
         name: 'Backpack',
         location: 'Davis, CA'
       },
-      isFounder: true, // This person found the item
+      isFounder: true,
+      status: 'item_returned',
+      verificationProgress: 100,
       messages: [
         {
           id: 1,
-          text: "Hi Andrew, I saw your post about a found black backpack with red trim. I lost mine at the library yesterday. Could this be mine?",
+          text: "Hello, I lost my black backpack with red trim at the library yesterday. I saw your post and I think you found it!",
           sender: "user",
-          timestamp: "9:10 AM"
+          timestamp: "2:00 PM"
         },
         {
           id: 2,
-          text: "Hi there! I did find a black backpack with red trim at the library. Could you tell me what's inside or any unique features to verify it's yours?",
+          text: "Hi there! Yes, I have a black backpack with red trim. Can you tell me any identifying features or what was inside to confirm it's yours?",
           sender: "finder",
-          timestamp: "9:15 AM"
+          timestamp: "2:05 PM",
+          verification: {
+            type: 'request',
+            status: 'pending'
+          }
         },
         {
           id: 3,
-          text: "Inside there's a math textbook (Calculus III), two blue notebooks, and a gray metal water bottle. There's also a keychain with a small bear on the zipper.",
+          text: "Inside there should be a blue notebook with 'Chemistry 101' written on it, a graphing calculator, and a water bottle with a Pokémon sticker.",
           sender: "user",
-          timestamp: "9:17 AM"
+          timestamp: "2:10 PM",
+          verification: {
+            type: 'response',
+            method: 'details',
+            status: 'submitted'
+          }
         },
         {
           id: 4,
-          text: "That's definitely your backpack! When can I meet you to return it?",
+          text: "That's definitely your backpack! Verification approved. When can I meet you to return it?",
           sender: "finder",
-          timestamp: "9:20 AM"
+          timestamp: "2:15 PM",
+          verification: {
+            type: 'approval',
+            status: 'approved'
+          }
+        },
+        {
+          id: 5,
+          text: "I'm free today at 4:30 PM at the library entrance. Does that work?",
+          sender: "user",
+          timestamp: "2:20 PM"
+        },
+        {
+          id: 6,
+          text: "Perfect, see you then!",
+          sender: "finder",
+          timestamp: "2:25 PM"
+        },
+        {
+          id: 7,
+          text: "Thanks for meeting me today! I'm glad we were able to return your backpack. Would you mind giving karma points for returning it?",
+          sender: "finder",
+          timestamp: "5:00 PM",
+          karma: {
+            type: 'request',
+            status: 'pending'
+          }
         }
       ]
     },
@@ -379,393 +803,560 @@ export default function ChatPage() {
         name: 'Pencil',
         location: 'Davis, CA'
       },
-      isFounder: true, // This person found the item
+      isFounder: false,
+      isClaimant: true,
+      status: 'awaiting_verification',
+      verificationProgress: 10,
       messages: [
         {
           id: 1,
-          text: "Hello Justin, I believe you found my mechanical pencil in Wellman Hall. I lost it during the chemistry lecture yesterday.",
+          text: "Hello Justin, I saw your post about a lost mechanical pencil. I found one at Wellman Hall yesterday.",
           sender: "user",
-          timestamp: "4:05 PM"
+          timestamp: "4:00 PM"
         },
         {
           id: 2,
-          text: "Hi! Yes, I did find a mechanical pencil after the chemistry lecture. Could you describe it so I can verify it's yours?",
+          text: "Oh thank you for contacting me! Yes, I lost my favorite mechanical pencil there during a lecture.",
           sender: "finder",
-          timestamp: "4:10 PM"
+          timestamp: "4:05 PM"
         },
         {
           id: 3,
-          text: "It's a Pentel brand with a blue grip. It has 0.5mm lead and my initials (AL) are etched near the clip.",
+          text: "I found your pencil, but I need to verify you're the owner. Could you tell me any unique details about it, like specific marks or when you last had it?",
           sender: "user",
-          timestamp: "4:15 PM"
-        },
-        {
-          id: 4,
-          text: "That's exactly what I found! I can drop it off at the Chemistry department office tomorrow if that works for you?",
-          sender: "finder",
-          timestamp: "4:20 PM"
+          timestamp: "4:10 PM",
+          verification: {
+            type: 'request',
+            status: 'pending'
+          }
         }
       ]
     }
   ];
-  
-  // Find the current conversation based on the ID
-  const currentConversation = conversations.find(conv => conv.id === conversationId) || conversations[0];
-  
+
+  // Find the current conversation data
+  const currentConversation = useMemo(() => {
+    return conversations.find(c => c.id === conversationId) || conversations[0];
+  }, [conversationId, conversations]);
+
+  // Set the current verification status from the conversation if not already set
+  useEffect(() => {
+    if (currentConversation) {
+      if (!params.verificationStatus) {
+        setVerificationStatus(currentConversation.status || 'none');
+      }
+      if (!params.verificationProgress) {
+        setVerificationProgress(currentConversation.verificationProgress || 0);
+      }
+    }
+  }, [currentConversation, params]);
+
+  // For rendering verification status banners based on the status
+  const shouldShowVerificationBanner = useMemo(() => {
+    return verificationStatus && verificationStatus !== 'none';
+  }, [verificationStatus]);
+
+  // For rendering karma request banner
+  const shouldShowKarmaBanner = useMemo(() => {
+    if (verificationStatus === 'item_returned' && !karmaGiven) {
+      const hasKarmaRequest = currentConversation?.messages?.some(
+        msg => msg.karma && msg.karma.type === 'request' && msg.karma.status === 'pending'
+      );
+      return hasKarmaRequest;
+    }
+    return false;
+  }, [verificationStatus, currentConversation, karmaGiven]);
+
+  // Determine if we should show meetup arranged notification
+  const shouldShowMeetupBanner = useMemo(() => {
+    return verificationStatus === 'meetup_arranged';
+  }, [verificationStatus]);
+
   // Set up the chat messages from the current conversation
   const [chatMessages, setChatMessages] = useState(currentConversation.messages);
   
-  // Set verification status based on conversation properties
+  // Modified useEffect to handle conversation initialization based on item type
   useEffect(() => {
-    // If this is the Emily Johnson conversation (ID 6) and verification isn't already set
-    if (currentConversation.id === 6 && !verificationStatus) {
-      // Set this conversation to show the verification needed banner
-      setVerificationStatus('need-to-submit');
-      
-      // Create verification data for the user to review/send
-      const userVerificationData = {
-        method: 'photo',
-        details: "The phone has my dog Max (a golden retriever) on the lock screen and my initials 'AL' are engraved on the back near the camera.",
-        image: "https://source.unsplash.com/random/300x400/?iphone-purple-lockscreen",
-        timestamp: new Date().toISOString(),
-      };
-      
-      setVerificationData(userVerificationData);
-    }
-    // For all found item chats (where user is claiming an item)
-    else if (currentConversation.isFounder && !verificationStatus) {
-      // Show appropriate verification status based on conversation phase
-      if (chatMessages.length >= 4) {
-        // After verification details have been provided, show verified status
-        setVerificationStatus('approved');
-        
-        // Create verification data for the item
-        const verificationDetails = {
-          method: 'details',
-          details: getVerificationDetailsForItem(currentConversation.item.name),
-          image: getVerificationImageForItem(currentConversation.item.name),
-          timestamp: new Date().toISOString(),
+    // Check if this is conversation about a found item or a lost item
+    if (params.itemType === 'found' || (currentConversation && currentConversation.isFounder)) {
+      // This is a conversation with someone who found an item
+      // If this is the first time chatting, add a verification request and prompt
+      if (chatMessages.length <= 2) {
+        // Add a verification request message from the finder
+        const verificationRequestMessage = {
+          id: chatMessages.length + 1,
+          text: "To verify you're the rightful owner, can you please share a photo of the item from before you lost it or provide some unique details about it that only the owner would know?",
+          sender: "finder",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          requiresVerification: true
         };
         
-        setVerificationData(verificationDetails);
-      } else {
-        // Before verification details are provided, show pending status
-        setVerificationStatus('pending');
+        setChatMessages(prev => [...prev, verificationRequestMessage]);
+        
+        // Set the verification status to prompt the user to submit verification
+        setVerificationStatus('verification_requested');
       }
     }
-    // If this is a conversation about the user's own post and someone else is claiming it
-    else if (params.userPost === 'true' || (currentConversation && currentConversation.isUserPost)) {
-      // This is for when the user needs to request verification from someone claiming their item
-      setVerificationStatus('need-to-request');
+    // If this is a conversation about an item the user lost (and someone found)
+    else if (params.itemType === 'lost' || (currentConversation && currentConversation.isUserPost)) {
+      // This is a conversation about the user's own lost item
+      // No automatic verification prompt needed - the finder will provide verification if needed
+      setVerificationStatus('awaiting_verification');
     }
-  // Only run when these specific values change, not on every render of currentConversation
-  }, [params.verification, params.userPost, currentConversation.id, currentConversation.isFounder, currentConversation.isUserPost, chatMessages.length, verificationStatus]);
+  }, [params.itemType, currentConversation, chatMessages.length]);
 
-  // Helper function to get verification details for different items
-  const getVerificationDetailsForItem = (itemName) => {
-    const details = {
-      'Water Bottle': "It's a Hydroflask brand, navy blue with a white UC Davis sticker on the side. It also has my initials 'AL' written in black marker on the bottom.",
-      'UC Davis ID': "The name is Adrian Lam, student ID #934782, and I'm wearing a blue shirt in the photo. There's also a bike permit sticker on the back.",
-      'Backpack': "Inside there's a math textbook (Calculus III), two blue notebooks, and a gray metal water bottle. There's also a keychain with a small bear on the zipper.",
-      'Pencil': "It's a Pentel brand with a blue grip. It has 0.5mm lead and my initials (AL) are etched near the clip.",
-      'Airpods': "The case has a holographic space sticker on the front. The left AirPod has a small scratch near the stem, and they're paired to my phone under the name 'Adrian's AirPods'.",
-      'IPhone': "The phone has my dog Max (a golden retriever) on the lock screen and my initials 'AL' are engraved on the back near the camera."
-    };
-    return details[itemName] || "The item has unique identifying characteristics that only the owner would know.";
-  };
-
-  // Helper function to get verification images for different items
-  const getVerificationImageForItem = (itemName) => {
-    const images = {
-      'Water Bottle': "https://source.unsplash.com/random/300x400/?water-bottle-blue",
-      'UC Davis ID': "https://source.unsplash.com/random/300x400/?student-id-card",
-      'Backpack': "https://source.unsplash.com/random/300x400/?backpack-black",
-      'Pencil': "https://source.unsplash.com/random/300x400/?mechanical-pencil",
-      'Airpods': "https://source.unsplash.com/random/300x400/?airpods-case",
-      'IPhone': "https://source.unsplash.com/random/300x400/?iphone-purple-lockscreen"
-    };
-    return images[itemName] || "https://source.unsplash.com/random/300x400/?lost-item";
-  };
-
-  // Add a function to handle receiving verification for user's own item
+  // Add this useEffect to extract meetup information from messages
   useEffect(() => {
-    // If this is the Emily Johnson conversation (ID 6) and verification isn't already set
-    if (currentConversation.id === 6 && !verificationStatus) {
-      // Set this conversation to show the verification needed banner
-      setVerificationStatus('need-to-submit');
-      
-      // Create verification data for the user to review/send
-      const userVerificationData = {
-        method: 'photo',
-        details: "The phone has my dog Max (a golden retriever) on the lock screen and my initials 'AL' are engraved on the back near the camera.",
-        image: "https://source.unsplash.com/random/300x400/?iphone-purple-lockscreen",
-        timestamp: new Date().toISOString(),
-      };
-      
-      setVerificationData(userVerificationData);
-    }
-    
-    // Original verification handling for other cases
-    // If verification is being awaited and a message was sent, simulate receiving verification
-    if (verificationStatus === 'awaiting' && chatMessages.length > 0) {
-      const lastMessage = chatMessages[chatMessages.length - 1];
-      
-      // If last message is from finder and mentions "sent" a photo or verification
-      if (lastMessage && lastMessage.sender === 'finder' && 
-         (lastMessage.text.includes('sent you') || lastMessage.text.includes('photo'))) {
+    if (currentConversation && chatMessages.length > 0) {
+      // Extract meetup details if status is meetup_arranged
+      if (verificationStatus === 'meetup_arranged') {
+        // Look for meetup details in messages
+        const meetupMessages = chatMessages.filter(msg => 
+          // Look for messages containing meetup related keywords
+          msg.text.toLowerCase().includes('meet') || 
+          msg.text.toLowerCase().includes('pm') ||
+          msg.text.toLowerCase().includes('am') ||
+          msg.text.toLowerCase().includes('tomorrow') ||
+          msg.text.toLowerCase().includes('today')
+        );
         
-        // Create a mock verification received from the claimant
-        const claimantVerification = {
-          method: 'photo',
-          details: "The iPhone has a cracked screen protector and your dog is on the lock screen. I can see the initials 'EJ' on the back near the camera.",
-          image: "https://source.unsplash.com/random/300x400/?iphone-purple",
-          timestamp: new Date().toISOString(),
-        };
-        
-        setVerificationData(claimantVerification);
-        setVerificationStatus('received');
-        
-        // Add a slight delay to let the UI update first
-        setTimeout(() => {
-          // Add a system message about receiving verification
-          setChatMessages(prevMessages => [
-            ...prevMessages,
-            {
-              id: prevMessages.length + 1,
-              text: "📷 Verification received. Review it to confirm this is your item.",
-              sender: "system",
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        if (meetupMessages.length > 0) {
+          // Find the latest meetup message
+          const latestMeetupMsg = meetupMessages[meetupMessages.length - 1];
+          
+          // Extract time information
+          const timeMatch = latestMeetupMsg.text.match(/\b([0-9]{1,2}:[0-9]{2})\s*(AM|PM|am|pm)\b/);
+          if (timeMatch) {
+            currentConversation.meetupTime = timeMatch[0];
+          }
+          
+          // Extract location information
+          const locationKeywords = ['at', 'in', 'near'];
+          locationKeywords.forEach(keyword => {
+            const locationRegex = new RegExp(`${keyword}\\s+the\\s+([\\w\\s]+)`, 'i');
+            const match = latestMeetupMsg.text.match(locationRegex);
+            if (match) {
+              currentConversation.meetupLocation = match[1];
             }
-          ]);
-        }, 500);
+          });
+          
+          // Extract date information
+          if (latestMeetupMsg.text.toLowerCase().includes('tomorrow')) {
+            currentConversation.meetupDate = 'tomorrow';
+          } else if (latestMeetupMsg.text.toLowerCase().includes('today')) {
+            currentConversation.meetupDate = 'today';
+          }
+        }
       }
     }
-  }, [chatMessages, verificationStatus, currentConversation.id]);
+  }, [currentConversation, chatMessages, verificationStatus]);
 
-  const handleSend = () => {
-    if (message.trim() === '') return;
+  // Handle sending a message with/without attachment
+  const handleSend = async () => {
+    if (message.trim() === '' && !attachedPhoto) return;
+    
+    // Create a new message object
+    const newMessage = {
+      id: chatMessages.length + 1,
+      text: message.trim(),
+      sender: "user",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    
+    // If there's an attached photo, add it to the message
+    if (attachedPhoto) {
+      // If this is a verification photo
+      if (attachedPhotoType === 'verification') {
+        // Create verification data
+        const verificationData = {
+          method: 'photo',
+          image: attachedPhoto,
+          details: message.trim() || `Verification photo for ${currentConversation.item.name}`,
+          timestamp: new Date().toISOString(),
+          status: 'pending',
+          reviewed: false
+        };
+        
+        // Add the verification data to the message
+        newMessage.verification = verificationData;
+        newMessage.text = message.trim() || "Here's verification that this is my item.";
+        
+        // Update verification status
+        setVerificationStatus('verification_in_progress');
+        setVerificationProgress(50);
+        setVerificationData(verificationData);
+      } else {
+        // Regular photo attachment
+        newMessage.attachment = {
+          type: 'image',
+          uri: attachedPhoto
+        };
+      }
+    }
     
     // Add the new message to the chat
-    const newMessage = {
-      id: chatMessages.length + 1,
-      text: message,
-      sender: "user",
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    
     setChatMessages([...chatMessages, newMessage]);
     
-    // Clear the input field
+    // Clear the input field and attachment
     setMessage('');
+    setAttachedPhoto(null);
+    setAttachedPhotoType(null);
+    setIsAttachmentActive(false);
     
-    // Simulate a response after a delay (for demo purposes)
+    // Simulate a response after a delay
     setTimeout(() => {
-      const responseText = getAutomaticResponse(currentConversation.item.name);
-      setChatMessages(prevMessages => [
-        ...prevMessages,
-        {
-          id: prevMessages.length + 1,
-          text: responseText,
-          sender: "finder",
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
-    }, 1000);
-  };
-
-  // Helper function to generate responses based on the item
-  const getAutomaticResponse = (itemName) => {
-    // If this is a conversation about verification for the user's own lost item
-    if (currentConversation.isUserPost && verificationStatus === 'awaiting') {
-      // Simulate the finder sending a response after user submits verification
-      return "Thank you for the verification! The details match the phone I found. Would you like to meet somewhere on campus tomorrow to get it back?";
-    }
-    
-    // If this is a user responding to a verification request for items they found
-    if (currentConversation.isFounder && verificationStatus === 'need-to-request') {
-      return "I appreciate your detailed verification. This definitely matches what I found. When would you like to meet to pick it up?";
-    }
-    
-    // Standard automatic responses
-    const responses = {
-      'Water Bottle': "That sounds perfect! I'll be there at 3:30 with your water bottle. I'll be looking for you!",
-      'UC Davis ID': "1 PM at the MU works great. I'll bring your ID. I'll be near the information desk.",
-      'Backpack': "Would you like to meet at the library around 3 PM today to get your backpack?",
-      'Pencil': "Yes, I can definitely drop it off at the Chemistry department office tomorrow. It should be at the lost and found there after 10 AM.",
-      'Airpods': "You're welcome! Our office is open from 8 AM to 5 PM Monday through Friday. Let us know if you have any questions.",
-      'IPhone': "That matches what I can see! I'd be happy to return your phone. Would you like to meet somewhere on campus tomorrow?"
-    };
-    
-    return responses[itemName] || "I'll take good care of your item until we can meet up.";
-  };
-
-  const goBack = () => {
-    router.back();
-  };
-
-  // Handle verification approval
-  const handleApproveVerification = () => {
-    setVerificationStatus('approved');
-    setShowVerificationReviewModal(false);
-    
-    // Add a system message about the approval
-    setChatMessages(prevMessages => [
-      ...prevMessages,
-      {
-        id: prevMessages.length + 1,
-        text: "✅ Ownership verification approved. You can now arrange to return the item.",
-        sender: "system",
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }
-    ]);
-    
-    // Add a response from the user
-    setTimeout(() => {
-      setChatMessages(prevMessages => [
-        ...prevMessages,
-        {
-          id: prevMessages.length + 1,
-          text: "I appreciate your detailed verification. This definitely matches what I found. When would you like to meet to pick it up?",
-          sender: "finder",
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
-    }, 1000);
-    
-    // Show confirmation alert
-    Alert.alert(
-      "Verification Approved",
-      "You've confirmed this person is the rightful owner. You can now arrange to return the item.",
-      [{ text: "OK" }]
-    );
-  };
-  
-  // Handle verification rejection
-  const handleRejectVerification = () => {
-    setVerificationStatus('rejected');
-    setShowVerificationReviewModal(false);
-    
-    // Add a system message about the rejection
-    setChatMessages(prevMessages => [
-      ...prevMessages,
-      {
-        id: prevMessages.length + 1,
-        text: "❌ Ownership verification rejected. Please provide more convincing evidence.",
-        sender: "system",
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }
-    ]);
-  };
-
-  // Handle submitting verification to a finder
-  const handleSubmitVerification = () => {
-    // Send a message providing verification
-    const newMessage = {
-      id: chatMessages.length + 1,
-      text: "Here's the verification: The lock screen shows my golden retriever named Max, and my initials 'AL' are engraved on the back near the camera.",
-      sender: "user",
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    
-    setChatMessages([...chatMessages, newMessage]);
-    setVerificationStatus('awaiting');
-    setShowVerificationReviewModal(false);
-    
-    // Simulate response after a short delay
-    setTimeout(() => {
-      setChatMessages(prevMessages => [
-        ...prevMessages,
-        {
-          id: prevMessages.length + 1,
-          text: "Thank you for the verification! The details match the phone I found. Would you like to meet somewhere on campus tomorrow to get it back?",
-          sender: "finder",
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
+      // Generate response based on the message type
+      let responseText = "I'll take good care of your item until we can meet up.";
       
-      // Set verification status to approved after verification is accepted
-      setVerificationStatus('approved');
-      
-      // Add a system message about the approval
-      setTimeout(() => {
-        setChatMessages(prevMessages => [
-          ...prevMessages,
-          {
-            id: prevMessages.length + 1,
+      // If the message contained verification
+      if (newMessage.verification) {
+        responseText = "Thank you for the verification! The details match the item I found. Would you like to meet somewhere on campus tomorrow to get it back?";
+        
+        // Simulate verification approval
+        setTimeout(() => {
+          // Update message verification status
+          setChatMessages(prev => {
+            return prev.map(msg => {
+              if (msg.id === newMessage.id && msg.verification) {
+                return {
+                  ...msg,
+                  verification: {
+                    ...msg.verification,
+                    status: 'approved',
+                    reviewed: true
+                  }
+                };
+              }
+              return msg;
+            });
+          });
+          
+          // Add system message about approval
+          const approvalMessage = {
+            id: chatMessages.length + 2,
             text: "✅ Your ownership has been verified. You can now arrange to recover your item.",
             sender: "system",
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          }
-        ]);
-      }, 500);
+          };
+          
+          setChatMessages(prev => [...prev, approvalMessage]);
+          setVerificationStatus('verification_approved');
+        }, 2000);
+      }
       
-    }, 1500);
-    
-    // Display confirmation
-    Alert.alert(
-      "Verification Submitted",
-      "You've submitted verification of your ownership. Wait for the finder to confirm.",
-      [{ text: "OK" }]
-    );
+      // Add response message
+      const responseMessage = {
+        id: chatMessages.length + 2,
+        text: responseText,
+        sender: "finder",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      
+      setChatMessages(prev => [...prev, responseMessage]);
+    }, 1000);
   };
 
-  // Handle requesting verification from a claimant
-  const handleRequestVerification = () => {
-    // Send a message requesting verification
-    const newMessage = {
-      id: chatMessages.length + 1,
-      text: "To verify you're the rightful owner, can you please share a photo of the item from before you lost it or provide some unique details about it that only the owner would know?",
-      sender: "user",
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    
-    setChatMessages([...chatMessages, newMessage]);
-    setVerificationStatus('awaiting');
-    
-    // Display confirmation
-    Alert.alert(
-      "Verification Requested",
-      "You've requested the claimant to verify their ownership. Wait for their response before returning the item.",
-      [{ text: "OK" }]
-    );
+  // Handle image picking from gallery or camera
+  const handlePickImage = async (source = 'gallery') => {
+    try {
+      let result;
+      
+      if (source === 'camera') {
+        // Request camera permission
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Camera access is required to take a photo');
+          return;
+        }
+        
+        // Launch camera
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
+      } else {
+        // Launch image library
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
+      }
+      
+      if (!result.canceled) {
+        setAttachedPhoto(result.assets[0].uri);
+        setShowImagePicker(false);
+      }
+    } catch (error) {
+      console.log('Error picking image:', error);
+      Alert.alert('Error', 'Failed to select image');
+    }
   };
 
-  // Handle reviewing received verification
-  const handleReviewVerification = () => {
-    setShowVerificationReviewModal(true);
+  // Handle verification action (approve/reject/view)
+  const handleVerificationAction = (action, data) => {
+    if (action === 'view-image' && data.image) {
+      setViewingImageUri(data.image);
+      setShowImageViewer(true);
+      return;
+    }
+    
+    if (action === 'request') {
+      setShowUploadVerificationModal(true);
+    }
+    
+    if (action === 'submit') {
+      // This handles when a user submits verification via the modal
+      
+      // If we don't want to send as a message (already handled in the modal onSubmit)
+      if (!data.sendAsMessage) {
+        // Update verification status directly
+        setVerificationStatus('verification_in_progress');
+        setVerificationProgress(50);
+        
+        // Store verification data for later
+        setVerificationData(data);
+        
+        // Add system message acknowledging receipt
+        const systemMessage = {
+          id: Date.now(),
+          text: "✓ Verification submitted successfully. Waiting for review.",
+          sender: "system",
+          timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+        };
+        
+        setChatMessages(prev => [...prev, systemMessage]);
+      }
+      
+      // Simulate finder reviewing the verification after a delay
+      if (currentConversation.isFounder) {
+        setTimeout(() => {
+          const responseMessage = {
+            id: Date.now() + 1,
+            text: "Thanks for submitting your verification. I'll review it and get back to you soon.",
+            sender: "finder",
+            timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+          };
+          
+          setChatMessages(prev => [...prev, responseMessage]);
+        }, 2000);
+      }
+    }
+    
+    if (action === 'approve') {
+      // Update the message containing this verification
+      setChatMessages(prev => {
+        return prev.map(msg => {
+          if (msg.verification && msg.verification.timestamp === data.timestamp) {
+            return {
+              ...msg,
+              verification: {
+                ...msg.verification,
+                status: 'approved',
+                reviewed: true
+              }
+            };
+          }
+          return msg;
+        });
+      });
+      
+      // Add system message
+      const systemMessage = {
+        id: chatMessages.length + 1,
+        text: "✅ Ownership verification approved. You can now arrange to return the item.",
+        sender: "system",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      
+      setChatMessages(prev => [...prev, systemMessage]);
+      setVerificationStatus('verification_approved');
+      setVerificationProgress(100);
+      
+      // Add response message
+      setTimeout(() => {
+        const responseMessage = {
+          id: chatMessages.length + 2,
+          text: "I appreciate your detailed verification. This definitely matches what I found. When would you like to meet to pick it up?",
+          sender: "finder",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        
+        setChatMessages(prev => [...prev, responseMessage]);
+      }, 500);
+    }
+    
+    if (action === 'reject') {
+      // Update the message containing this verification
+      setChatMessages(prev => {
+        return prev.map(msg => {
+          if (msg.verification && msg.verification.timestamp === data.timestamp) {
+            return {
+              ...msg,
+              verification: {
+                ...msg.verification,
+                status: 'rejected',
+                reviewed: true
+              }
+            };
+          }
+          return msg;
+        });
+      });
+      
+      // Add system message
+      const systemMessage = {
+        id: chatMessages.length + 1,
+        text: "❌ Ownership verification rejected. Please provide more convincing evidence.",
+        sender: "system",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      
+      setChatMessages(prev => [...prev, systemMessage]);
+      setVerificationStatus('awaiting_verification');
+      setVerificationProgress(10);
+    }
   };
 
   // Render each chat message
-  const renderMessage = ({ item }) => (
-    <View style={[
-      styles.messageContainer,
-      item.sender === 'user' ? styles.userMessage : 
-      item.sender === 'system' ? styles.systemMessage : styles.finderMessage
-    ]}>
-      {/* Add profile picture to messages */}
-      {item.sender === 'finder' && (
-        <Image 
-          source={currentConversation.photo}
-          style={styles.messageProfilePic}
-          resizeMode="cover"
-        />
-      )}
-      <View style={styles.messageContent}>
-        <Text style={[
-          styles.messageText,
-          item.sender === 'system' && styles.systemMessageText
-        ]}>{item.text}</Text>
-        <Text style={styles.messageTime}>{item.timestamp}</Text>
+  const renderMessage = ({ item }) => {
+    // Function to determine if we should show verification tag based on message content
+    const shouldShowVerificationTag = () => {
+      // If message has verification data, show tag
+      if (item.verification) return true;
+      
+      // Special cases for verification prompts
+      if (item.requiresVerification) return true;
+      
+      // Check for verification keywords in message text
+      const verificationKeywords = [
+        'verify', 'verification', 'confirm', 'ownership', 
+        'proof', 'identify', 'authenticity', 'validate'
+      ];
+      
+      return verificationKeywords.some(keyword => 
+        item.text.toLowerCase().includes(keyword)
+      );
+    };
+    
+    // Function to handle verification-related actions from a message
+    const handleMessageVerificationAction = () => {
+      // If the message is asking for verification, open the upload modal
+      if (item.verification?.type === 'request' && item.verification?.status === 'pending') {
+        setShowUploadVerificationModal(true);
+      }
+      // If user has already submitted verification, show progress status
+      else if (item.verification?.status === 'submitted' || item.verification?.status === 'reviewing') {
+        Alert.alert(
+          "Verification Submitted",
+          "Your verification is being reviewed. We'll notify you when it's complete.",
+          [{ text: "OK" }]
+        );
+      }
+      // Otherwise handle as a generic verification action
+      else {
+        setAttachedPhotoType('verification');
+        setIsAttachmentActive(true);
+      }
+    };
+    
+    return (
+      <View style={[
+        styles.messageContainer,
+        item.sender === 'user' ? styles.userMessage : 
+        item.sender === 'system' ? styles.systemMessage : styles.finderMessage
+      ]}>
+        {/* Add profile picture to messages */}
+        {item.sender === 'finder' && (
+          <Image 
+            source={currentConversation.photo}
+            style={styles.messageProfilePic}
+            resizeMode="cover"
+          />
+        )}
+        <View style={styles.messageContent}>
+          <Text style={[
+            styles.messageText,
+            item.sender === 'system' && styles.systemMessageText
+          ]}>{item.text}</Text>
+          
+          {/* Show image attachment if present */}
+          {item.attachment && item.attachment.type === 'image' && (
+            <TouchableOpacity
+              onPress={() => {
+                setViewingImageUri(item.attachment.uri);
+                setShowImageViewer(true);
+              }}
+              style={styles.messageImageContainer}
+            >
+              <Image 
+                source={{ uri: item.attachment.uri }} 
+                style={styles.messageImage} 
+                resizeMode="cover"
+              />
+            </TouchableOpacity>
+          )}
+          
+          {/* Show verification attachment if present */}
+          {item.verification && (
+            <VerificationMessageAttachment 
+              data={item.verification} 
+              onAction={(action, data) => {
+                if (action === 'respond') {
+                  setShowUploadVerificationModal(true);
+                } else {
+                  handleVerificationAction(action, data);
+                }
+              }}
+              userRole={item.sender === 'user' ? 'owner' : 'finder'}
+            />
+          )}
+          
+          {/* Show karma tag if present */}
+          {item.karma && (
+            <View style={styles.karmaTag}>
+              <Ionicons name="star" size={16} color="#FFC107" />
+              <Text style={styles.karmaTagText}>
+                {item.karma.type === 'request' 
+                  ? 'Karma Requested' 
+                  : 'Karma Given'}
+              </Text>
+            </View>
+          )}
+          
+          {/* Highlight messages requiring verification but without verification data */}
+          {!item.verification && shouldShowVerificationTag() && (
+            <TouchableOpacity 
+              style={styles.verificationPrompt}
+              onPress={handleMessageVerificationAction}
+            >
+              <Ionicons name="shield-checkmark-outline" size={16} color="#4A6572" />
+              <Text style={styles.verificationPromptText}>
+                Tap to provide verification
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          <Text style={styles.messageTime}>{item.timestamp}</Text>
+        </View>
+        {item.sender === 'user' && (
+          <Image 
+            source={userProfilePhoto}
+            style={styles.messageProfilePic}
+            resizeMode="cover"
+          />
+        )}
       </View>
-      {item.sender === 'user' && (
-        <Image 
-          source={userProfilePhoto}
-          style={styles.messageProfilePic}
-          resizeMode="cover"
-        />
-      )}
-    </View>
-  );
+    );
+  };
+
+  // Navigation
+  const goBack = () => {
+    router.back();
+  };
 
   // Add a function to handle giving karma
   const handleGiveKarma = async () => {
@@ -844,81 +1435,45 @@ export default function ChatPage() {
         </View>
 
         {/* Verification Banner */}
-        {verificationStatus === 'pending' && (
+        {shouldShowVerificationBanner && (
           <VerificationBanner 
-            isPending={true} 
-            onPress={() => setShowVerificationReviewModal(true)}
+            status={verificationStatus} 
+            progress={verificationProgress}
+            onPress={() => {
+              // Different actions based on verification status
+              if (verificationStatus === 'verification_requested' || verificationStatus === 'awaiting_verification') {
+                // Open the verification upload modal when verification is requested
+                setShowUploadVerificationModal(true);
+              } else if (verificationStatus === 'verification_in_progress') {
+                // Just show status info when verification is in progress
+                Alert.alert(
+                  "Verification In Progress",
+                  "Your verification is being reviewed. We'll notify you when it's complete.",
+                  [{ text: "OK" }]
+                );
+              } else {
+                // For other statuses, show the verification review details
+                setShowVerificationReviewModal(true);
+              }
+            }}
           />
         )}
-        {verificationStatus === 'approved' && (
-          <VerificationBanner 
-            isPending={false} 
-            onPress={() => {}}
+
+        {/* Meetup Banner - shown when meetup is arranged */}
+        {shouldShowMeetupBanner && (
+          <MeetupBanner 
+            meetupData={{
+              // Extract meetup details from conversation if available
+              time: currentConversation.meetupTime || '3:30 PM',
+              location: currentConversation.meetupLocation || 'the Silo',
+              date: currentConversation.meetupDate || 'today'
+            }}
           />
         )}
-        {verificationStatus === 'need-to-request' && (
-          <TouchableOpacity 
-            style={styles.verificationRequestBanner}
-            onPress={handleRequestVerification}
-          >
-            <Ionicons name="shield-checkmark-outline" size={24} color="#555" />
-            <View style={styles.bannerTextContainer}>
-              <Text style={styles.bannerTitle}>
-                Verify Ownership
-              </Text>
-              <Text style={styles.bannerDescription}>
-                Before returning your item, request verification from this person
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#555" />
-          </TouchableOpacity>
-        )}
-        {verificationStatus === 'need-to-submit' && (
-          <TouchableOpacity 
-            style={styles.verificationFulfillBanner}
-            onPress={handleReviewVerification}
-          >
-            <Ionicons name="camera-outline" size={24} color="#4A6572" />
-            <View style={styles.bannerTextContainer}>
-              <Text style={styles.bannerTitle}>
-                Fulfill Verification Request
-              </Text>
-              <Text style={styles.bannerDescription}>
-                Upload a photo or provide details to verify this is your item
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#4A6572" />
-          </TouchableOpacity>
-        )}
-        {verificationStatus === 'awaiting' && (
-          <View style={styles.verificationAwaitingBanner}>
-            <Ionicons name="time-outline" size={24} color="#555" />
-            <View style={styles.bannerTextContainer}>
-              <Text style={styles.bannerTitle}>
-                Verification Pending
-              </Text>
-              <Text style={styles.bannerDescription}>
-                Waiting for confirmation of your verification
-              </Text>
-            </View>
-          </View>
-        )}
-        {verificationStatus === 'received' && (
-          <TouchableOpacity 
-            style={styles.verificationReceivedBanner}
-            onPress={handleReviewVerification}
-          >
-            <Ionicons name="document-text-outline" size={24} color="#008577" />
-            <View style={styles.bannerTextContainer}>
-              <Text style={styles.bannerTitle}>
-                Verification Received
-              </Text>
-              <Text style={styles.bannerDescription}>
-                Review the verification to confirm ownership
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#008577" />
-          </TouchableOpacity>
+
+        {/* Karma Banner - shown when the item has been returned and karma requested */}
+        {shouldShowKarmaBanner && (
+          <KarmaBanner onGiveKarma={() => setShowKarmaModal(true)} />
         )}
 
         {/* Chat messages */}
@@ -935,34 +1490,175 @@ export default function ChatPage() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.inputContainer}
         >
-          <TextInput
-            style={styles.input}
-            placeholder="Type a message..."
-            value={message}
-            onChangeText={setMessage}
-            multiline
-          />
-          <TouchableOpacity 
-            style={styles.sendButton} 
-            onPress={handleSend}
-            disabled={message.trim() === ''}
-          >
-            <Ionicons 
-              name="send" 
-              size={24} 
-              color={message.trim() === '' ? "#CCC" : "#8AD3A3"} 
+          {/* Show photo preview if there's an attached photo */}
+          {attachedPhoto && (
+            <View style={styles.photoPreviewWrapper}>
+              <PhotoPreview 
+                uri={attachedPhoto} 
+                onRemove={() => {
+                  setAttachedPhoto(null);
+                  setAttachedPhotoType(null);
+                }} 
+              />
+              {attachedPhotoType === 'verification' && (
+                <View style={styles.verificationBadge}>
+                  <Ionicons name="shield-checkmark" size={14} color="#FFF" />
+                  <Text style={styles.verificationBadgeText}>Verification</Text>
+                </View>
+              )}
+            </View>
+          )}
+          
+          <View style={styles.inputRow}>
+            {/* Attachment button */}
+            <AttachmentButton 
+              isActive={isAttachmentActive}
+              onPress={() => {
+                setIsAttachmentActive(!isAttachmentActive);
+                setShowImagePicker(true);
+                // Default to regular photo if not already set
+                if (!attachedPhotoType) {
+                  setAttachedPhotoType('message');
+                }
+              }}
             />
-          </TouchableOpacity>
+            
+            {/* Text input */}
+            <TextInput
+              style={styles.input}
+              placeholder={
+                attachedPhoto && attachedPhotoType === 'verification'
+                  ? "Add details about your item (optional)..."
+                  : "Type a message..."
+              }
+              value={message}
+              onChangeText={setMessage}
+              multiline
+            />
+            
+            {/* Send button */}
+            <TouchableOpacity 
+              style={styles.sendButton} 
+              onPress={handleSend}
+              disabled={message.trim() === '' && !attachedPhoto}
+            >
+              <Ionicons 
+                name="send" 
+                size={24} 
+                color={(message.trim() === '' && !attachedPhoto) ? "#CCC" : "#8AD3A3"} 
+              />
+            </TouchableOpacity>
+          </View>
         </KeyboardAvoidingView>
+
+        {/* Image Picker Modal */}
+        <Modal
+          transparent={true}
+          visible={showImagePicker}
+          animationType="slide"
+          onRequestClose={() => setShowImagePicker(false)}
+        >
+          <View style={styles.imagePickerModalOverlay}>
+            <TouchableWithoutFeedback onPress={() => setShowImagePicker(false)}>
+              <View style={styles.imagePickerModalBg} />
+            </TouchableWithoutFeedback>
+            
+            <View style={styles.imagePickerModalContent}>
+              <View style={styles.imagePickerHeader}>
+                <Text style={styles.imagePickerTitle}>
+                  {attachedPhotoType === 'verification'
+                    ? "Verification Photo"
+                    : "Add Photo"}
+                </Text>
+                <TouchableOpacity onPress={() => setShowImagePicker(false)}>
+                  <Ionicons name="close" size={24} color="#333" />
+                </TouchableOpacity>
+              </View>
+              
+              {attachedPhotoType === 'verification' && (
+                <Text style={styles.imagePickerDescription}>
+                  Please upload a photo of your item taken before it was lost to verify ownership
+                </Text>
+              )}
+              
+              <View style={styles.imagePickerOptions}>
+                <TouchableOpacity 
+                  style={styles.imagePickerOption} 
+                  onPress={() => handlePickImage('camera')}
+                >
+                  <View style={styles.imagePickerIconContainer}>
+                    <Ionicons name="camera" size={28} color="#8AD3A3" />
+                  </View>
+                  <Text style={styles.imagePickerOptionText}>Take Photo</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.imagePickerOption} 
+                  onPress={() => handlePickImage('gallery')}
+                >
+                  <View style={styles.imagePickerIconContainer}>
+                    <Ionicons name="image" size={28} color="#8AD3A3" />
+                  </View>
+                  <Text style={styles.imagePickerOptionText}>Choose from Gallery</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* Verification Review Modal */}
         <VerificationReviewModal
           visible={showVerificationReviewModal}
           onClose={() => setShowVerificationReviewModal(false)}
           data={verificationData}
-          onApprove={currentConversation.isUserPost ? handleSubmitVerification : handleApproveVerification}
-          onReject={handleRejectVerification}
+          onApprove={() => {}}
+          onReject={() => {}}
           isUserSubmittedVerification={!currentConversation.isUserPost}
+        />
+
+        {/* Verification Upload Modal */}
+        <VerificationModal
+          visible={showUploadVerificationModal}
+          onClose={() => setShowUploadVerificationModal(false)}
+          onSubmit={(data) => {
+            // Close the modal
+            setShowUploadVerificationModal(false);
+            
+            // Send the verification data as a message
+            if (data.sendAsMessage) {
+              const messageText = data.method === 'details' 
+                ? data.details 
+                : "Here's a photo of my item for verification.";
+                
+              const newMessage = {
+                id: Date.now(),
+                text: messageText,
+                sender: 'user',
+                timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                verification: {
+                  type: 'response',
+                  method: data.method,
+                  status: 'submitted',
+                  details: data.details,
+                  image: data.image
+                }
+              };
+              
+              // Add the message to the chat
+              setChatMessages(prev => [...prev, newMessage]);
+              
+              // Update verification status to in_progress
+              setVerificationStatus('verification_in_progress');
+              setVerificationProgress(50);
+            }
+            
+            // Handle verification directly
+            handleVerificationAction('submit', data);
+          }}
+          itemName={currentConversation?.item?.name || 'item'}
+          itemType={currentConversation?.isFounder ? 'found' : 'lost'}
+          verificationStatus={verificationStatus}
+          verificationProgress={verificationProgress}
         />
 
         {/* Karma Modal - Keep existing modal code */}
@@ -987,7 +1683,15 @@ export default function ChatPage() {
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.karmaModalGive}
-                  onPress={handleGiveKarma}
+                  onPress={() => {
+                    setKarmaGiven(true);
+                    setShowKarmaModal(false);
+                    Alert.alert(
+                      "Karma Given!",
+                      "Thank you for recognizing someone who helped reconnect a lost item!",
+                      [{ text: "OK" }]
+                    );
+                  }}
                 >
                   <Ionicons name="star" size={18} color="#333" style={styles.karmaIcon} />
                   <Text style={styles.karmaModalGiveText}>Give Karma</Text>
@@ -996,6 +1700,13 @@ export default function ChatPage() {
             </View>
           </View>
         </Modal>
+
+        {/* Image Viewer Modal */}
+        <ImageViewerModal
+          visible={showImageViewer}
+          uri={viewingImageUri}
+          onClose={() => setShowImageViewer(false)}
+        />
       </SafeAreaView>
     </View>
   );
@@ -1060,30 +1771,50 @@ const styles = StyleSheet.create({
   verificationBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
   },
-  pendingBanner: {
+  requestedBanner: {
     backgroundColor: '#FFF8E1',
     borderBottomColor: '#FFE082',
   },
-  reviewedBanner: {
+  awaitingBanner: {
+    backgroundColor: '#FFF3E0',
+    borderBottomColor: '#FFCC80',
+  },
+  pendingBanner: {
+    backgroundColor: '#E3F2FD',
+    borderBottomColor: '#BBDEFB',
+  },
+  approvedBanner: {
+    backgroundColor: '#E8F5E9',
+    borderBottomColor: '#A5D6A7',
+  },
+  meetupBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#F3E5F5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#CE93D8',
+  },
+  returnedBanner: {
     backgroundColor: '#E8F5E9',
     borderBottomColor: '#A5D6A7',
   },
   bannerTextContainer: {
     flex: 1,
-    marginLeft: 10,
-    marginRight: 10,
+    marginLeft: 12,
   },
   bannerTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
     marginBottom: 2,
+    color: '#333',
   },
   bannerDescription: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#666',
   },
   chatContainer: {
@@ -1141,11 +1872,28 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   inputContainer: {
-    flexDirection: 'row',
-    padding: 8,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
+    paddingTop: 8,
+    paddingHorizontal: 8,
+    paddingBottom: 12,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  attachmentButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  attachmentButtonActive: {
+    backgroundColor: '#E8F5E9',
   },
   input: {
     flex: 1,
@@ -1164,6 +1912,239 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  photoPreviewWrapper: {
+    paddingBottom: 8,
+    alignItems: 'center',
+  },
+  photoPreviewContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    marginVertical: 8,
+    position: 'relative',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#DDD',
+  },
+  photoPreviewImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+  },
+  photoPreviewRemoveButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 12,
+  },
+  verificationBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: '#8AD3A3',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  verificationBadgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 3,
+  },
+  // Message attachment styles
+  messageImageContainer: {
+    width: '100%',
+    height: 150,
+    borderRadius: 8,
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  messageImage: {
+    width: '100%',
+    height: '100%',
+  },
+  verificationPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E1F5FE',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  verificationPromptText: {
+    color: '#4A6572',
+    fontSize: 13,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  // Verification attachment in messages
+  verificationAttachment: {
+    marginTop: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  verificationAttachmentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  verificationAttachmentTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  verificationAttachmentImageContainer: {
+    position: 'relative',
+  },
+  verificationAttachmentImage: {
+    width: '100%',
+    height: 150,
+    borderRadius: 0,
+  },
+  verificationAttachmentImageOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    padding: 8,
+    alignItems: 'center',
+  },
+  verificationAttachmentImageText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  verificationAttachmentDetails: {
+    padding: 12,
+  },
+  verificationAttachmentDetailsText: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
+  },
+  verificationAttachmentActions: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
+  },
+  verificationAttachmentRejectBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(0,0,0,0.05)',
+  },
+  verificationAttachmentRejectText: {
+    fontSize: 14,
+    color: '#F44336',
+    fontWeight: '500',
+  },
+  verificationAttachmentApproveBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  verificationAttachmentApproveText: {
+    fontSize: 14,
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
+  verificationAttachmentRespondBtn: {
+    margin: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#8AD3A3',
+    alignSelf: 'flex-start',
+  },
+  verificationAttachmentRespondText: {
+    fontSize: 13,
+    color: '#FFF',
+    fontWeight: '500',
+  },
+  // Image picker modal
+  imagePickerModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  imagePickerModalBg: {
+    flex: 1,
+  },
+  imagePickerModalContent: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+  },
+  imagePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  imagePickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  imagePickerDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  imagePickerOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginVertical: 20,
+  },
+  imagePickerOption: {
+    alignItems: 'center',
+    width: 120,
+  },
+  imagePickerIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  imagePickerOptionText: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  // Image viewer modal
+  imageViewerContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerImage: {
+    width: '100%',
+    height: '80%',
+  },
+  imageViewerCloseButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    zIndex: 100,
+  },
+  // Existing karma modal styles
   karmaModalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -1234,170 +2215,76 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-
-  // Verification Review Modal Styles
-  verificationModalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  verificationModalBg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  verificationModalContent: {
-    width: '90%',
-    backgroundColor: 'white',
-    borderRadius: 20,
-    overflow: 'hidden',
-    maxHeight: '80%',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  verificationModalHeader: {
+  karmaTag: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EFEFEF',
+    backgroundColor: '#FFF8E1',
+    borderRadius: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    marginTop: 8,
+    alignSelf: 'flex-start',
   },
-  verificationModalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+  karmaTagText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#FFA000',
+    marginLeft: 4,
   },
-  verificationModalCloseBtn: {
-    padding: 4,
+  // Meetup banner styles
+  meetupIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F8F0F9',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  verificationModalScroll: {
-    padding: 16,
+  meetupContent: {
+    flex: 1,
+    marginLeft: 12,
   },
-  verificationModalSubtitle: {
+  meetupTitle: {
     fontSize: 16,
-    marginBottom: 16,
-    color: '#555',
-  },
-  verificationSectionTitle: {
-    fontSize: 17,
     fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
+    color: '#9C27B0',
+    marginBottom: 2,
   },
-  verificationInstructions: {
+  meetupDetails: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 12,
-    lineHeight: 20,
   },
-  verificationPhotoContainer: {
-    marginBottom: 24,
-  },
-  verificationImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  verificationDetailsContainer: {
-    marginBottom: 24,
-  },
-  verificationDetailsBox: {
-    backgroundColor: '#F5F5F5',
+  
+  // Karma banner styles
+  karmaBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 16,
-    borderRadius: 12,
-    marginTop: 8,
+    backgroundColor: '#FFF8E1',
+    borderBottomWidth: 1,
+    borderBottomColor: '#FFE082',
   },
-  verificationDetailsText: {
-    fontSize: 15,
-    color: '#333',
-    lineHeight: 22,
+  karmaIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFFDE7',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  verificationQuestion: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 16,
-    textAlign: 'center',
-    color: '#333',
-  },
-  verificationActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  rejectButton: {
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 30,
+  karmaContent: {
     flex: 1,
+    marginLeft: 12,
     marginRight: 8,
-    alignItems: 'center',
   },
-  rejectButtonText: {
+  karmaTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFA000',
+    marginBottom: 2,
+  },
+  karmaDetails: {
+    fontSize: 14,
     color: '#666',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  approveButton: {
-    backgroundColor: '#8AD3A3',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 30,
-    flex: 1,
-    marginLeft: 8,
-    alignItems: 'center',
-  },
-  approveButtonText: {
-    color: '#000',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  verificationRequestBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    backgroundColor: '#F5F5F5',
-    borderBottomColor: '#E0E0E0',
-  },
-  verificationAwaitingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    backgroundColor: '#F8F8F8',
-    borderBottomColor: '#E0E0E0',
-  },
-  verificationReceivedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    backgroundColor: '#E0F2F1',
-    borderBottomColor: '#B2DFDB',
-  },
-  verificationFulfillBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    backgroundColor: '#E1F5FE',
-    borderBottomColor: '#B3E5FC',
   },
 }); 
