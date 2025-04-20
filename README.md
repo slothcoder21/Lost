@@ -1,7 +1,7 @@
 # Lost - Reconnect with your belongings
 
 ## Inspiration
-We've all been there - that sinking feeling when you realize your water bottle, backpack, or student ID is missing. At UC Davis and campuses everywhere, lost items pile up in offices and lost & found centers, often never reunited with their owners. Our team experienced this frustration firsthand, which inspired us to create a solution that bridges the gap between lost items and their rightful owners.
+We've all been there - that sinking feeling when you realize your water bottle, backpack, or student ID is missing. You can post on Reddit but it gets buried by hundreds of posts. At UC Davis and campuses everywhere, lost items pile up in offices and lost & found centers, often never reunited with their owners. I haveexperienced this frustration firsthand, which inspired me to create a solution that bridges the gap between lost items and their rightful owners.
 
 ## What it does
 **Lost & Found** is a mobile application that streamlines the process of reporting and finding lost items. Users can:
