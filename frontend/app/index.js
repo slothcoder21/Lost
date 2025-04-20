@@ -1,13 +1,29 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, Text, View, SafeAreaView, Dimensions, Image } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import ActionButton from '../components/ActionButton';
+import { useAuth } from '../contexts/AuthContext';
 
 const { width, height } = Dimensions.get('window');
 
 export default function SplashScreen() {
   const router = useRouter();
+  const { isAuthenticated, loading } = useAuth();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      // Only redirect if we're authenticated
+      if (!loading) {
+        const authenticated = await isAuthenticated();
+        if (authenticated) {
+          router.replace('/home');
+        }
+      }
+    };
+    
+    checkAuth();
+  }, [loading]);
 
   const handleStart = () => {
     // Navigate to the login screen

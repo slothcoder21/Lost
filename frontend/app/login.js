@@ -1,25 +1,137 @@
-import React from 'react';
-import { StyleSheet, Text, View, SafeAreaView, TextInput, TouchableOpacity, Image, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, SafeAreaView, TextInput, TouchableOpacity, Image, Dimensions, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import { signInWithEmail, signInWithFacebook, signInWithGoogle, signInWithApple } from '../services/firebaseAuthService';
+import SocialAuthButtons from '../components/SocialAuthButtons';
+import { useAuth } from '../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { isAuthenticated } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [activeProvider, setActiveProvider] = useState(null);
 
-  const handleSignIn = () => {
-    // Handle sign in logic here
-    router.push('/home');
+  // Check if user is already authenticated
+  useEffect(() => {
+    const checkAuth = async () => {
+      const authenticated = await isAuthenticated();
+      if (authenticated) {
+        router.replace('/home');
+      }
+    };
+    
+    checkAuth();
+  }, []);
+
+  const handleSignIn = async () => {
+    // Form validation
+    if (!email || !password) {
+      setError('Please enter both email and password');
+      return;
+    }
+    
+    try {
+      setEmailLoading(true);
+      setError('');
+      
+      // Use Firebase login service
+      const userCredential = await signInWithEmail(email, password);
+      
+      console.log('Successfully logged in with email', userCredential.user);
+      
+      // Navigate to home
+      router.replace('/home');
+    } catch (error) {
+      let errorMessage = 'Login failed. Please try again.';
+      
+      // Extract specific error messages
+      switch (error.code) {
+        case 'auth/invalid-email':
+          errorMessage = 'Invalid email address format.';
+          break;
+        case 'auth/user-disabled':
+          errorMessage = 'This account has been disabled.';
+          break;
+        case 'auth/user-not-found':
+          errorMessage = 'No account found with this email.';
+          break;
+        case 'auth/wrong-password':
+          errorMessage = 'Incorrect password.';
+          break;
+        case 'auth/too-many-requests':
+          errorMessage = 'Too many failed login attempts. Try again later.';
+          break;
+        default:
+          // Use the generic message
+          break;
+      }
+      
+      setError(errorMessage);
+      console.error('Email login error:', error.code, error.message);
+    } finally {
+      setEmailLoading(false);
+    }
   };
 
   const handleCreateAccount = () => {
     router.push('/register');
   };
 
-  const handleSocialLogin = (provider) => {
-    // Handle social login logic here
-    console.log(`Login with ${provider}`);
+  const handleSocialSignIn = async (provider) => {
+    try {
+      setLoading(true);
+      setError('');
+      setActiveProvider(provider);
+      
+      let userCredential;
+      
+      // Call the appropriate auth function
+      switch(provider) {
+        case 'Facebook':
+          userCredential = await signInWithFacebook();
+          break;
+        case 'Google':
+          userCredential = await signInWithGoogle();
+          break;
+        case 'Apple':
+          userCredential = await signInWithApple();
+          break;
+        default:
+          throw new Error(`Unsupported provider: ${provider}`);
+      }
+      
+      if (userCredential) {
+        console.log(`Successfully logged in with ${provider}`, userCredential.user);
+        
+        // Check if user is new or existing
+        const isNewUser = userCredential.additionalUserInfo?.isNewUser;
+        
+        if (isNewUser) {
+          // New user - go to profile setup
+          router.replace('/setup-profile');
+        } else {
+          // Existing user - go to home
+          router.replace('/home');
+        }
+      } else {
+        // User cancelled the login flow
+        console.log(`${provider} login cancelled`);
+      }
+    } catch (error) {
+      let errorMessage = `Error signing in with ${provider}. Please try again.`;
+      console.error(`${provider} login error:`, error.code, error.message);
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+      setActiveProvider(null);
+    }
   };
 
   return (
@@ -39,58 +151,47 @@ export default function LoginScreen() {
           <View style={styles.form}>
             <TextInput 
               style={styles.input}
-              placeholder="Username"
+              placeholder="Email"
               placeholderTextColor="#999"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
             />
             <TextInput 
               style={styles.input}
               placeholder="Password"
               placeholderTextColor="#999"
               secureTextEntry
+              value={password}
+              onChangeText={setPassword}
             />
             
             <TouchableOpacity 
-              style={styles.signInButton} 
+              style={[styles.signInButton, emailLoading && styles.disabledButton]} 
               onPress={handleSignIn}
+              disabled={emailLoading}
             >
-              <Text style={styles.buttonText}>Sign In</Text>
+              {emailLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>Sign In</Text>
+              )}
             </TouchableOpacity>
+            
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
           </View>
           
           {/* Social login section */}
           <View style={styles.socialSection}>
-            <Text style={styles.socialText}>Or sign in with</Text>
-            <View style={styles.socialButtons}>
-              <TouchableOpacity 
-                style={styles.socialButton} 
-                onPress={() => handleSocialLogin('Facebook')}
-              >
-                <Image 
-                  source={require('../assets/facebook-icon.png')}
-                  style={styles.socialIcon}
-                />
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.socialButton}
-                onPress={() => handleSocialLogin('Google')}
-              >
-                <Image 
-                  source={require('../assets/google-icon.png')}
-                  style={styles.socialIcon}
-                />
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.socialButton}
-                onPress={() => handleSocialLogin('Apple')}
-              >
-                <Image 
-                  source={require('../assets/apple-icon.png')}
-                  style={styles.socialIcon}
-                />
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.socialText}>or sign in with</Text>
+            <SocialAuthButtons 
+              onPressFacebook={() => handleSocialSignIn('Facebook')}
+              onPressGoogle={() => handleSocialSignIn('Google')}
+              onPressApple={() => handleSocialSignIn('Apple')}
+              loading={loading}
+              activeProvider={activeProvider}
+            />
           </View>
           
           {/* Create account link */}
@@ -153,6 +254,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.27,
+    shadowRadius: 4.65,
+    elevation: 6,
   },
   buttonText: {
     fontSize: 16,
@@ -168,28 +277,6 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 15,
   },
-  socialButtons: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  socialButton: {
-    width: 45,
-    height: 45,
-    borderRadius: 22.5,
-    backgroundColor: 'white',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  socialIcon: {
-    width: 25,
-    height: 25,
-  },
   createAccountSection: {
     flexDirection: 'row',
     marginTop: 30,
@@ -203,4 +290,12 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontWeight: '600',
   },
+  errorText: {
+    color: 'red',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  disabledButton: {
+    opacity: 0.7,
+  }
 }); 
