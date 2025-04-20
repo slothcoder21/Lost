@@ -13,14 +13,14 @@ We've all been there - that sinking feeling when you realize your water bottle, 
 - **Claim lost items** through a verification process
 - **Get notified** when possible matches to their lost items appear
 
-## How we built it
+## How I built it
 Our application is built using:
 - **React Native** with **Expo** for cross-platform mobile development
 - **Firebase** for authentication, real-time database, and storage
 
 We implemented a security-focused approach with intentionally disabled auth persistence to protect user data and item claim processes.
 
-## Challenges we ran into
+## Challenges I ran into
 - Balancing user privacy with the need for direct communication between finders and owners
 - Implementing an effective item matching algorithm that connects similar descriptions
 - Optimizing image storage and retrieval to make the app responsive
