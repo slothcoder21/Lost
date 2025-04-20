@@ -1,4 +1,4 @@
-# Lost & Found - Reconnect with your belongings
+# Lost - Reconnect with your belongings
 
 ## Inspiration
 We've all been there - that sinking feeling when you realize your water bottle, backpack, or student ID is missing. At UC Davis and campuses everywhere, lost items pile up in offices and lost & found centers, often never reunited with their owners. Our team experienced this frustration firsthand, which inspired us to create a solution that bridges the gap between lost items and their rightful owners.
